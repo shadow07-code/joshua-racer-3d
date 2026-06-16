@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#241a4d"/>
+      <stop offset="0.5" stop-color="#ff3d6e"/>
+      <stop offset="1" stop-color="#ff9a3c"/>
+    </linearGradient>
+    <clipPath id="r"><rect x="0" y="0" width="512" height="512" rx="96"/></clipPath>
+  </defs>
+  <g clip-path="url(#r)">
+    <rect width="512" height="512" fill="url(#sky)"/>
+    <circle cx="256" cy="300" r="86" fill="#fff1c4"/>
+    <!-- road -->
+    <polygon points="150,512 362,512 300,300 212,300" fill="#2c2f37"/>
+    <polygon points="252,512 260,512 258,300 254,300" fill="#f4f4f4"/>
+    <!-- big J -->
+    <text x="256" y="300" font-family="Arial, sans-serif" font-weight="900" font-size="240"
+          fill="#ffffff" text-anchor="middle" dominant-baseline="middle">J</text>
+  </g>
+</svg>

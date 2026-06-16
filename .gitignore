@@ -1,0 +1,12 @@
+# Vercel CLI project link / local deploy state
+.vercel
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log

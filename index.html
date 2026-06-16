@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a1430" />
+  <meta name="description" content="Joshua Racer 3D — a glossy sunset arcade racer." />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Joshua Racer" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" href="./icons/icon.svg" />
+  <title>Joshua Racer 3D</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; height: 100%; overflow: hidden;
+      background: #0c0a18;
+      overscroll-behavior: none; touch-action: none;
+      -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+      font-family: ui-monospace, "Courier New", monospace; color: #fff;
+    }
+    #game3d { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+    /* Speed lines (drawn by effects.js) — below the vignette. */
+    #speed-lines { position: fixed; inset: 0; pointer-events: none; z-index: 19; }
+
+    /* Static premium finish — subtle vignette + faint scanlines (motionless). */
+    #fx-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 20;
+      background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.26) 100%); }
+    #fx-overlay::after { content: ""; position: absolute; inset: 0;
+      background: repeating-linear-gradient(to bottom, rgba(0,0,0,0.03) 0 1px, transparent 1px 3px); }
+    /* Dynamic speed vignette — opacity driven by effects.js. */
+    #speed-vignette { position: fixed; inset: 0; pointer-events: none; z-index: 21; opacity: 0;
+      background: radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,0.9) 100%); }
+
+    /* HUD */
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 25; display: none; }
+    #hud.show { display: block; }
+    #speed-wrap { position: absolute; right: calc(env(safe-area-inset-right) + 18px);
+      bottom: calc(env(safe-area-inset-bottom) + 18px); text-align: right; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+    #speed { font-size: 60px; font-weight: 800; line-height: 0.9; letter-spacing: 1px; }
+    #speed-unit { font-size: 16px; font-weight: 700; opacity: 0.85; letter-spacing: 3px; }
+    #tag { position: absolute; top: calc(env(safe-area-inset-top) + 12px);
+      left: calc(env(safe-area-inset-left) + 14px); font-size: 12px; letter-spacing: 2px; opacity: 0.7; }
+    #lives { position: absolute; top: calc(env(safe-area-inset-top) + 32px);
+      left: calc(env(safe-area-inset-left) + 14px); font-size: 22px; letter-spacing: 4px;
+      color: #ff5a7a; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+    /* Crash flash — red edge pulse on a hit. */
+    #crash-flash { position: fixed; inset: 0; pointer-events: none; z-index: 22; opacity: 0;
+      background: radial-gradient(ellipse at center, rgba(255,0,42,0) 40%, rgba(255,0,42,0.65) 100%); }
+
+    /* Score (top-center), pass count, combo banner, near-miss flash */
+    #score { position: absolute; top: calc(env(safe-area-inset-top) + 8px); left: 50%; transform: translateX(-50%);
+      font-size: 34px; font-weight: 800; letter-spacing: 1px; text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      font-variant-numeric: tabular-nums; }
+    #passed { position: absolute; top: calc(env(safe-area-inset-top) + 60px); left: calc(env(safe-area-inset-left) + 14px);
+      font-size: 12px; letter-spacing: 2px; opacity: 0.75; }
+    #combo { position: absolute; top: 16%; left: 50%; transform: translateX(-50%); text-align: center;
+      opacity: 0; transition: opacity 0.12s; }
+    #combo.show { opacity: 1; }
+    #combo .lab { font-size: 14px; font-weight: 800; letter-spacing: 3px; color: #ffd24a; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+    #combo-n { font-size: 44px; font-weight: 900; color: #ffd24a; text-shadow: 0 2px 8px rgba(0,0,0,0.7); line-height: 1; }
+    #combo-track { width: 120px; height: 4px; margin: 6px auto 0; background: rgba(255,255,255,0.18); border-radius: 2px; overflow: hidden; }
+    #combo-bar { height: 100%; width: 100%; background: #ffd24a; }
+    #nearmiss { position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%); opacity: 0;
+      font-size: 18px; font-weight: 800; letter-spacing: 2px; color: #9be7ff; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+
+    /* Game-over panel */
+    #gameover { position: fixed; inset: 0; z-index: 45; display: none; align-items: center; justify-content: center;
+      padding: 20px; background: rgba(8,6,18,0.84); }
+    #gameover.show { display: flex; }
+    .go-box { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 10px;
+      background: #15112b; border: 2px solid #ff5a7a; border-radius: 14px; padding: 22px; text-align: center; }
+    .go-title { font-size: 22px; font-weight: 900; letter-spacing: 3px; color: #ff5a7a; }
+    #go-new { display: none; font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #ffd24a; }
+    .go-score { font-size: 46px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+    .go-sub { font-size: 12px; opacity: 0.7; letter-spacing: 1px; }
+    .go-stats { display: flex; justify-content: space-around; gap: 8px; margin-top: 6px; }
+    .go-stat { font-size: 11px; letter-spacing: 1px; opacity: 0.85; }
+    .go-stat b { display: block; font-size: 15px; font-weight: 800; margin-top: 3px; opacity: 1; }
+    #go-again { margin-top: 8px; font: inherit; font-size: 15px; font-weight: 800; letter-spacing: 1px;
+      padding: 13px; border-radius: 10px; cursor: pointer; background: #ff5a7a; color: #fff; border: 2px solid #ff8aa0; }
+    #go-again:active { background: #ff8aa0; color: #1a1430; }
+
+    /* Rampage tint (full-screen pulse during nitrous) */
+    #rampage-tint { position: fixed; inset: 0; pointer-events: none; z-index: 23; opacity: 0; transition: opacity 0.2s;
+      background: radial-gradient(ellipse at center, rgba(60,170,255,0) 35%, rgba(60,160,255,0.35) 100%),
+                  radial-gradient(ellipse at center, rgba(255,140,40,0) 55%, rgba(255,120,30,0.22) 100%); }
+    /* Rampage banner */
+    #rampage-msg { position: absolute; top: 28%; left: 50%; transform: translateX(-50%); opacity: 0;
+      font-size: 42px; font-weight: 900; letter-spacing: 4px; color: #ffd24a;
+      text-shadow: 0 0 18px rgba(255,150,40,0.85), 0 3px 8px rgba(0,0,0,0.6); white-space: nowrap; }
+    /* Rampage pip meter */
+    #pips { position: absolute; bottom: 7%; left: 50%; transform: translateX(-50%); display: none; gap: 6px; }
+    #pips.show { display: flex; }
+    #pips .pip { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.25); }
+    #pips .pip.gold { background: #ffcf3a; border-color: #fff0b0; box-shadow: 0 0 8px rgba(255,200,60,0.85); }
+    #pips .pip.blue { background: #3aa0ff; border-color: #bfe0ff; }
+    #pips .pip.flash { animation: pipflash 0.4s ease-in-out infinite; }
+    @keyframes pipflash { 0%,100% { box-shadow: 0 0 6px rgba(255,200,60,0.6); } 50% { box-shadow: 0 0 16px rgba(255,220,90,1); } }
+
+    /* Toolbar — music + comfort toggles */
+    #toolbar { position: fixed; top: calc(env(safe-area-inset-top) + 10px);
+      right: calc(env(safe-area-inset-right) + 12px); z-index: 30; display: flex; gap: 8px; }
+    #toolbar button {
+      background: rgba(20,16,40,0.8); color: #fff; border: 2px solid #ff8a4c; border-radius: 8px;
+      padding: 9px 12px; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: 1px; cursor: pointer;
+    }
+    #toolbar button:active { background: rgba(255,138,76,0.85); color: #1a1430; }
+    #btn-music { min-width: 44px; }
+
+    /* On-screen steering pads */
+    #steer-controls { position: fixed; inset: 0; z-index: 28; pointer-events: none; display: none; }
+    #steer-controls.show { display: block; }
+    #steer-controls button {
+      position: absolute; bottom: calc(env(safe-area-inset-bottom) + 8%);
+      width: 40%; height: 26%; max-height: 220px; pointer-events: auto; background: transparent; border: none;
+      color: rgba(255,255,255,0.5); font-size: 64px; line-height: 1; font-weight: bold;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center; touch-action: none;
+    }
+    #btn-steer-left { left: 1%; } #btn-steer-right { right: 1%; }
+    #steer-controls button:active { color: #fff; transform: scale(0.92); }
+
+    /* Rotate-to-landscape gate */
+    #rotate-gate { position: fixed; inset: 0; z-index: 40; display: none;
+      align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+      background: #0c0a18; text-align: center; padding: 24px; }
+    #rotate-gate.show { display: flex; }
+    #rotate-gate .icon { font-size: 64px; animation: spin 2.4s ease-in-out infinite; }
+    #rotate-gate .t { font-size: 18px; font-weight: 800; letter-spacing: 2px; }
+    #rotate-gate .s { font-size: 13px; opacity: 0.7; letter-spacing: 1px; }
+    @keyframes spin { 0%,100% { transform: rotate(0); } 50% { transform: rotate(90deg); } }
+
+    /* Install modal */
+    #install-modal { position: fixed; inset: 0; z-index: 50; display: none;
+      align-items: center; justify-content: center; padding: 20px; background: rgba(8,6,18,0.82); }
+    #install-modal.show { display: flex; }
+    .install-box { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px;
+      background: #15112b; border: 2px solid #ff8a4c; border-radius: 14px; padding: 22px; text-align: center; }
+    #install-title { font-size: 18px; font-weight: 800; letter-spacing: 2px; }
+    #install-msg { font-size: 14px; line-height: 1.5; opacity: 0.92; }
+    .install-row { display: flex; gap: 10px; }
+    .install-row button { flex: 1; font: inherit; font-size: 14px; font-weight: 800; letter-spacing: 1px;
+      padding: 13px 10px; border-radius: 10px; cursor: pointer; }
+    #install-yes { background: #ff5a7a; color: #fff; border: 2px solid #ff8aa0; }
+    #install-yes:active { background: #ff8aa0; color: #1a1430; }
+    #install-no { background: transparent; color: #cfc7e6; border: 2px solid #463c66; }
+    #install-no:active { background: #463c66; }
+
+    /* ── Phase 7: menu overlays (title / name / leaderboard / tutorial / paused) ── */
+    .overlay { position: fixed; inset: 0; z-index: 44; display: none;
+      align-items: center; justify-content: center; padding: 20px; }
+    .overlay.show { display: flex; }
+
+    /* Shared buttons */
+    .big-btn { font: inherit; font-size: 16px; font-weight: 800; letter-spacing: 2px;
+      padding: 14px 30px; border-radius: 10px; cursor: pointer;
+      background: #ff5a7a; color: #fff; border: 2px solid #ff8aa0; box-shadow: 0 4px 0 rgba(0,0,0,0.4); }
+    .big-btn:active { background: #ff8aa0; color: #1a1430; transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,0.4); }
+    .ghost-btn { font: inherit; font-size: 14px; font-weight: 800; letter-spacing: 2px;
+      padding: 12px 22px; border-radius: 10px; cursor: pointer;
+      background: rgba(20,16,40,0.7); color: #cfc7e6; border: 2px solid #ff8a4c; }
+    .ghost-btn:active { background: rgba(255,138,76,0.85); color: #1a1430; }
+
+    /* Title screen — the live 3D attract scene shows through the lower fade. */
+    #title-screen { flex-direction: column; gap: 4px; text-align: center;
+      background: linear-gradient(180deg, rgba(8,6,18,0.93) 0%, rgba(8,6,18,0.62) 45%,
+                  rgba(8,6,18,0.12) 78%, rgba(8,6,18,0) 100%); }
+    .title-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .title-main { font-size: clamp(30px, 8vw, 62px); font-weight: 900; letter-spacing: 3px; line-height: 0.95;
+      color: #fff; text-shadow: 0 0 24px rgba(255,138,76,0.55), 0 4px 12px rgba(0,0,0,0.7); }
+    .title-3d { color: #ff5a7a; text-shadow: 0 0 22px rgba(255,90,122,0.85); }
+    .title-sub { font-size: clamp(10px, 2.4vw, 14px); letter-spacing: 3px; color: #ffd2a0; opacity: 0.9; }
+    .title-best { font-size: 13px; letter-spacing: 2px; color: #ffd24a; margin-top: 2px; min-height: 16px; }
+    .title-hint { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 12px); left: 0; right: 0;
+      text-align: center; font-size: 11px; letter-spacing: 2px; opacity: 0.55; }
+
+    /* Modal panels (name / leaderboard / tutorial) */
+    .modal-overlay { background: rgba(8,6,18,0.86); }
+    .panel-box { width: 100%; max-width: 360px; max-height: 88%; display: flex; flex-direction: column; gap: 12px;
+      background: #15112b; border: 2px solid #ff8a4c; border-radius: 14px; padding: 20px; text-align: center; }
+    .panel-title { font-size: 18px; font-weight: 900; letter-spacing: 3px; color: #ff8a4c; }
+    .panel-row { display: flex; gap: 10px; justify-content: center; }
+    .panel-row .big-btn, .panel-row .ghost-btn { flex: 1; }
+    #name-input { width: 100%; text-align: center; text-transform: uppercase; font: inherit; font-size: 22px;
+      letter-spacing: 6px; padding: 12px 8px; background: #0a0818; color: #fff;
+      border: 2px solid #ff8a4c; border-radius: 8px; outline: none; }
+
+    /* Leaderboard list */
+    .lb-status { display: none; font-size: 11px; letter-spacing: 1px; color: #ff8a4c; }
+    .lb-status.show { display: block; }
+    .lb-list { overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column;
+      gap: 2px; min-height: 80px; max-height: 46vh; }
+    .lb-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; font-size: 13px; letter-spacing: 1px;
+      border-bottom: 1px solid rgba(255,138,76,0.16); }
+    .lb-row.me { background: rgba(255,90,122,0.22); border-radius: 6px; }
+    .lb-rank { color: #ff8a4c; min-width: 24px; text-align: right; font-variant-numeric: tabular-nums; }
+    .lb-name { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lb-score { font-variant-numeric: tabular-nums; color: #ffd24a; font-weight: 800; }
+
+    /* Tutorial card */
+    .tut-body { font-size: 14px; line-height: 1.55; opacity: 0.92; }
+    .tut-keys { display: flex; justify-content: center; gap: 16px; font-size: 16px; font-weight: 800;
+      letter-spacing: 1px; color: #9be7ff; }
+    .tut-tip { font-size: 12px; opacity: 0.82; }
+
+    /* Paused */
+    #paused { background: rgba(8,6,18,0.62); }
+    .paused-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .paused-title { font-size: 40px; font-weight: 900; letter-spacing: 6px; color: #fff;
+      text-shadow: 0 0 18px rgba(255,138,76,0.5); }
+
+    /* Game-over action row */
+    .go-actions { display: flex; gap: 10px; margin-top: 4px; }
+    .go-actions .ghost-btn { flex: 1; padding: 11px 8px; font-size: 12px; letter-spacing: 1px; }
+
+    /* Pause toolbar button — only shown during gameplay (toggled by main.js). */
+    #btn-pause { display: none; }
+  </style>
+
+  <script type="importmap">
+  { "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/jsm/"
+  } }
+  </script>
+</head>
+<body>
+  <canvas id="game3d"></canvas>
+
+  <canvas id="speed-lines" aria-hidden="true"></canvas>
+  <div id="crash-flash"></div>
+  <div id="rampage-tint"></div>
+  <div id="speed-vignette"></div>
+  <div id="fx-overlay" aria-hidden="true"></div>
+
+  <div id="hud" aria-hidden="true">
+    <div id="tag">JOSHUA RACER 3D</div>
+    <div id="lives">♥♥♥</div>
+    <div id="passed">PASSED 0</div>
+    <div id="score">0</div>
+    <div id="combo"><div class="lab">COMBO</div><div id="combo-n">×2</div><div id="combo-track"><div id="combo-bar"></div></div></div>
+    <div id="nearmiss">NEAR MISS +100</div>
+    <div id="rampage-msg">RAMPAGE!</div>
+    <div id="pips"></div>
+    <div id="speed-wrap"><span id="speed">0</span><br><span id="speed-unit">KM/H</span></div>
+  </div>
+
+  <div id="toolbar">
+    <button id="btn-pause" aria-label="Pause">⏸</button>
+    <button id="btn-music" aria-label="Toggle music">🎵</button>
+    <button id="btn-sfx" aria-label="Toggle sound effects">🔊</button>
+    <button id="btn-comfort">COMFORT: OFF</button>
+  </div>
+
+  <div id="steer-controls" aria-hidden="true">
+    <button id="btn-steer-left" aria-label="Steer left">◀</button>
+    <button id="btn-steer-right" aria-label="Steer right">▶</button>
+  </div>
+
+  <!-- Landscape-only gate -->
+  <div id="rotate-gate" aria-hidden="true">
+    <div class="icon">📱</div>
+    <div class="t">ROTATE TO LANDSCAPE</div>
+    <div class="s">Joshua Racer 3D plays in landscape only</div>
+  </div>
+
+  <!-- Heavy install funnel -->
+  <div id="install-modal" role="dialog" aria-label="Install the game">
+    <div class="install-box">
+      <div id="install-title">INSTALL THE GAME</div>
+      <div id="install-msg"></div>
+      <div class="install-row">
+        <button id="install-no">Play in browser</button>
+        <button id="install-yes">INSTALL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game over -->
+  <div id="gameover" role="dialog" aria-label="Game over">
+    <div class="go-box">
+      <div class="go-title">GAME OVER</div>
+      <div id="go-new">NEW RECORD!</div>
+      <div class="go-score" id="go-score">0</div>
+      <div class="go-sub">BEST <span id="go-best">0</span></div>
+      <div class="go-stats">
+        <div class="go-stat">PASSED<b id="go-passed">0</b></div>
+        <div class="go-stat">TIME<b id="go-time">0S</b></div>
+        <div class="go-stat">TOP<b id="go-top">0 KM/H</b></div>
+      </div>
+      <button id="go-again">PLAY AGAIN</button>
+      <div class="go-actions">
+        <button id="go-board" class="ghost-btn">🏆 LEADERBOARD</button>
+        <button id="go-exit" class="ghost-btn">EXIT</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Title screen (live 3D attract scene behind) -->
+  <div id="title-screen" class="overlay" role="dialog" aria-label="Title screen">
+    <div class="title-wrap">
+      <div class="title-main">JOSHUA RACER <span class="title-3d">3D</span></div>
+      <div class="title-sub">WEAVE THE TRAFFIC · CHASE THE RAMPAGE</div>
+      <div class="title-best" id="title-best"></div>
+      <button id="title-play" class="big-btn">▶ PLAY</button>
+      <button id="title-board" class="ghost-btn">🏆 LEADERBOARD</button>
+    </div>
+    <div class="title-hint">Landscape · auto-accelerate · ◀ ▶ to steer</div>
+  </div>
+
+  <!-- Pre-race name entry -->
+  <div id="name-entry" class="overlay modal-overlay" role="dialog" aria-label="Enter your name">
+    <div class="panel-box">
+      <div class="panel-title">ENTER NAME</div>
+      <input id="name-input" type="text" maxlength="12" autocomplete="off"
+             autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="AAA" />
+      <div class="panel-row">
+        <button id="name-back" class="ghost-btn">BACK</button>
+        <button id="name-start" class="big-btn">START</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global leaderboard -->
+  <div id="leaderboard" class="overlay modal-overlay" role="dialog" aria-label="Leaderboard">
+    <div class="panel-box">
+      <div class="panel-title">🏆 TOP 20</div>
+      <div id="lb-status" class="lb-status"></div>
+      <div id="lb-list" class="lb-list"></div>
+      <div class="panel-row">
+        <button id="lb-back" class="big-btn">BACK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-run tutorial card -->
+  <div id="tutorial" class="overlay modal-overlay" role="dialog" aria-label="How to play">
+    <div class="panel-box">
+      <div class="panel-title">HOW TO PLAY</div>
+      <div class="tut-body">Your car <b>accelerates on its own</b>.<br>Steer to weave through traffic — don't crash.</div>
+      <div class="tut-keys"><span>◀ A ←</span><span>→ D ▶</span></div>
+      <div class="tut-body tut-tip">Chain near-misses at speed to build <b>COMBO</b> and unleash <b>RAMPAGE</b>.</div>
+      <div class="panel-row">
+        <button id="tut-skip" class="ghost-btn">SKIP</button>
+        <button id="tut-play" class="big-btn">DRIVE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Paused -->
+  <div id="paused" class="overlay" role="dialog" aria-label="Paused">
+    <div class="paused-wrap">
+      <div class="paused-title">PAUSED</div>
+      <button id="paused-resume" class="big-btn">▶ RESUME</button>
+      <button id="paused-exit" class="ghost-btn">EXIT TO TITLE</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

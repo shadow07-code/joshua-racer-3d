@@ -1,0 +1,16 @@
+{
+  "name": "Joshua Racer 3D",
+  "short_name": "Joshua Racer",
+  "description": "A glossy, sunset arcade racer — weave the traffic, chase the rampage.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#0c0a18",
+  "theme_color": "#1a1430",
+  "icons": [
+    { "src": "./icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "./icons/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
