@@ -13,7 +13,21 @@ export function makeHud(onPlayAgain) {
   const goPanel = el("gameover"), goScore = el("go-score"), goBest = el("go-best"),
     goNew = el("go-new"), goPassed = el("go-passed"), goTime = el("go-time"),
     goTop = el("go-top"), goBtn = el("go-again");
+  const popupsEl = el("popups");
   if (goBtn && onPlayAgain) goBtn.addEventListener("click", onPlayAgain);
+
+  // Floating score / milestone popup that rises + fades (juice). kind ∈
+  // nearmiss | combo | smash | milestone; `big` bumps the size for key moments.
+  function popup(text, kind = "milestone", big = false) {
+    if (!popupsEl) return;
+    const d = document.createElement("div");
+    d.className = "popup " + kind + (big ? " big" : "");
+    d.textContent = text;
+    d.style.left = (42 + Math.random() * 16) + "%";
+    popupsEl.appendChild(d);
+    setTimeout(() => { d.remove(); }, 1000);
+  }
+  function clearPopups() { if (popupsEl) popupsEl.innerHTML = ""; }
 
   // Build the rampage pips (gold = banked near-misses; blue = pass-cooldown refill).
   const pipEls = [];
@@ -73,5 +87,5 @@ export function makeHud(onPlayAgain) {
   }
   function hideGameOver() { if (goPanel) goPanel.classList.remove("show"); }
 
-  return { update, showGameOver, hideGameOver };
+  return { update, showGameOver, hideGameOver, popup, clearPopups };
 }

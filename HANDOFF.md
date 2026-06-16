@@ -55,9 +55,21 @@ The game is a **complete, playable arcade loop** with sound. Built & verified:
   attract sim, no console errors). ⏳ **Only the live deploy remains** — needs the owner's Vercel
   account + a fresh Upstash store (see §6).
 
+- **Phase 8 — juice + fixes (DONE):** a game-feel pass (`src/juice.js`): **hitstop** on crash/smash,
+  **slow-mo** on rampage trigger/exit, **camera shake** (trauma model), and floating **score/milestone
+  popups** (`hud.popup`, styled in `index.html`, container `#popups`). Wired in `main.js` (frame-time
+  scale + `render()` shake offset→restore + event hooks). Milestone callouts at 120/150/180/200 km/h
+  and combo ×5/×10/×15/×20. All juice is **Comfort-Mode-aware** (no slow-mo, gentler shake). Also fixed
+  the **"slanted car" bug** — a held on-screen steer pad stayed latched when a crash hid the controls;
+  now released on `lostpointercapture` + `clearSteer()` on every fresh run (`input.js`). SW → **v10**.
+- **DEPLOYED & LIVE:** GitHub `https://github.com/shadow07-code/joshua-racer-3d` (public) · Vercel
+  **https://joshua-racer-3d.vercel.app** (project `joshua-racer-3d`, scope `antonysajan-9019`). Site +
+  serverless function verified live. Leaderboard returns 503 "not configured" until Upstash is added.
+
 ### What's LEFT (priority order)
-1. **Deploy Phase 7 to Vercel** *(owner action; code is ready)* — connect a new Vercel project +
-   a fresh Upstash Redis store so the **online leaderboard goes live**. Step-by-step in §6.
+1. **Connect Upstash so the leaderboard goes live** *(owner; ~5 min in the Vercel dashboard)* — the only
+   remaining shipping step. Vercel project → Storage → create **Upstash Redis** → it injects
+   `UPSTASH_REDIS_REST_URL/TOKEN` → **redeploy**. Then `/api/leaderboard` returns entries. See §6.
 2. **Oil slicks** — the small remaining Phase 5 piece (slip hazard, no life cost). The reference
    `entities/oilspills.js` is dead code (depends on removed `RACE.totalLaps/lapLength`) → must be
    re-implemented for endless mode: spawn oil decals ahead periodically, `checkOilHit`, on hit set
@@ -237,4 +249,9 @@ npx -y serve -l 8080 .
 # find LAN IP for phone testing
 Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.PrefixOrigin -eq 'Dhcp' }
 ```
-SW is at **v9** — bump it on the next code change (and keep `sw.js`'s `ASSETS` list + `/api/` bypass in sync).
+SW is at **v10** — bump it on the next code change (and keep `sw.js`'s `ASSETS` list + `/api/` bypass in sync).
+
+> ⚠️ **localhost:8080 gotcha:** another local project ("Just A Scanner") has a **service worker** +
+> sometimes a server bound to **:8080**, which can hijack navigations and serve the wrong app. If you
+> see the wrong title, unregister SWs + clear caches for the origin, or just **serve on a different
+> port** (e.g. `npx serve -l 8099 .`). The Vercel deploy is a separate origin and unaffected.

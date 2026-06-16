@@ -95,6 +95,10 @@ function bindSteerButtons() {
     btn.addEventListener("pointerup", (e) => { e.preventDefault(); release(side); });
     btn.addEventListener("pointercancel", () => release(side));
     btn.addEventListener("pointerleave", () => release(side));
+    // If the button is hidden mid-press (e.g. a crash → game-over hides the steer
+    // pads), the browser drops pointer capture without a pointerup — release here
+    // so the steer doesn't stay latched into the next run (the "slanted car" bug).
+    btn.addEventListener("lostpointercapture", () => release(side));
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
   };
   wire(btnL, "L");
@@ -107,6 +111,15 @@ export function initInput(canvas) {
   _bound = true;
   bindPointer(canvas);
   bindSteerButtons();
+}
+
+// Drop any latched on-screen steer/touch state — called when a fresh run starts
+// so a stuck button (or a touch released over a hidden control) can't bleed a
+// phantom steer into the new race.
+export function clearSteer() {
+  btnHeld.L = false; btnHeld.R = false;
+  touchPoints.clear();
+  recompute();
 }
 
 export function getInput() { return state; }

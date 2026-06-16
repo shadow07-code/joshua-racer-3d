@@ -152,6 +152,24 @@
     #install-no { background: transparent; color: #cfc7e6; border: 2px solid #463c66; }
     #install-no:active { background: #463c66; }
 
+    /* Floating score / milestone popups (juice) */
+    #popups { position: fixed; inset: 0; pointer-events: none; z-index: 26; overflow: hidden; }
+    .popup { position: absolute; left: 50%; top: 44%; transform: translate(-50%, 0);
+      font-family: inherit; font-weight: 900; letter-spacing: 1px; white-space: nowrap;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.7); will-change: transform, opacity;
+      animation: popup-rise 0.95s cubic-bezier(0.2,0.7,0.3,1) forwards; }
+    .popup.nearmiss  { color: #9be7ff; font-size: 22px; }
+    .popup.combo     { color: #ffd24a; font-size: 30px; }
+    .popup.smash     { color: #ff9a3c; font-size: 26px; }
+    .popup.milestone { color: #fff; font-size: 28px; text-shadow: 0 0 16px rgba(255,170,90,0.75), 0 2px 10px rgba(0,0,0,0.7); }
+    .popup.big       { font-size: 42px; }
+    @keyframes popup-rise {
+      0%   { opacity: 0; transform: translate(-50%, 16px) scale(0.7); }
+      14%  { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+      28%  { transform: translate(-50%, -6px) scale(1.0); }
+      100% { opacity: 0; transform: translate(-50%, -74px) scale(1.0); }
+    }
+
     /* ── Phase 7: menu overlays (title / name / leaderboard / tutorial / paused) ── */
     .overlay { position: fixed; inset: 0; z-index: 44; display: none;
       align-items: center; justify-content: center; padding: 20px; }
@@ -250,6 +268,8 @@
     <div id="pips"></div>
     <div id="speed-wrap"><span id="speed">0</span><br><span id="speed-unit">KM/H</span></div>
   </div>
+
+  <div id="popups" aria-hidden="true"></div>
 
   <div id="toolbar">
     <button id="btn-pause" aria-label="Pause">⏸</button>

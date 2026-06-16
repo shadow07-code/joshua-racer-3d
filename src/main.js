@@ -4,7 +4,8 @@
 // keeps animating as a live attract scene behind the menus.
 import * as THREE from "three";
 import { PHYS, STEER, SCORE, RACE } from "./config.js";
-import { initInput, getInput, consumePress } from "./input.js";
+import { initInput, getInput, consumePress, clearSteer } from "./input.js";
+import * as juice from "./juice.js";
 import { toggleComfort, isComfort } from "./comfort.js";
 import { initMusic, startOnce, toggleMute, isMuted, pauseMusic, resumeMusic } from "./music.js";
 import { initPwa } from "./pwa.js";
@@ -74,6 +75,12 @@ let raceTime = 0, topSpeedKmh = 0;
 let rampageMeter = 0, rampageCooldown = 0, rampageMsg = "", rampageMsgTimer = 0;
 let heliSoundOn = false;
 
+// Juice: milestone callouts + camera shake.
+const SPEED_MILESTONES = [120, 150, 180, 200];
+let speedMsIdx = 0;             // next speed milestone to fire
+const comboMsHit = new Set();   // combo milestones already celebrated this run
+const _shake = { x: 0, y: 0 };
+
 // First-run steering tutorial — shown once, then remembered.
 const TUTORIAL_KEY = "jr3d.tutorialSeen";
 function hasSeenTutorial() { try { return localStorage.getItem(TUTORIAL_KEY) === "1"; } catch { return false; } }
@@ -121,6 +128,10 @@ function resetWorld() {
   rampageMeter = 0; rampageCooldown = 0; rampageMsg = ""; rampageMsgTimer = 0;
   hitTopSpeed = false; densityTimer = 0; densityMul = 1;
   attractT = 0;
+  speedMsIdx = 0; comboMsHit.clear();
+  clearSteer();            // drop any latched steer so a new run starts straight
+  juice.resetJuice();
+  hud.clearPopups();
 }
 
 // ── State transitions ──
@@ -167,6 +178,8 @@ function registerSmash() {
   comboTimer = RACE.comboWindow;
   score.score += SCORE.smashBonus * combo;
   sfxCombo(combo);
+  juice.hitStop(0.035); juice.addShake(0.14);
+  hud.popup("SMASH ×" + combo, "smash");
 }
 
 // Take a life-costing hit (traffic crash or flaming barrel). Returns true if the
@@ -175,7 +188,9 @@ function takeHit(severity, invulnSec) {
   applyCollisionLoss(player, severity, invulnSec);
   combo = 0; comboTimer = 0; rampageMeter = 0;   // breaks the streak + dumps the meter
   crashFlash = 0.5;
+  player.steerVis = 0;                            // un-bank immediately on impact
   sfxCrash();
+  juice.hitStop(0.09); juice.addShake(0.55);
   player.lives -= 1;
   if (player.lives <= 0) { endRun(); return true; }
   return false;
@@ -288,6 +303,11 @@ function stepRace(dt) {
   raceTime += dt;
   const kmhNow = Math.round(player.speed / PHYS.maxSpeed * PHYS.topSpeedKmh);
   if (kmhNow > topSpeedKmh) topSpeedKmh = kmhNow;
+  while (speedMsIdx < SPEED_MILESTONES.length && topSpeedKmh >= SPEED_MILESTONES[speedMsIdx]) {
+    hud.popup(SPEED_MILESTONES[speedMsIdx] + " KM/H!", "milestone");
+    juice.addShake(0.15);
+    speedMsIdx++;
+  }
 
   // Density scaling — once top speed is first reached, traffic compounds.
   if (!hitTopSpeed && player.speed >= PHYS.maxSpeed * RACE.topSpeedThreshold) { hitTopSpeed = true; densityTimer = 0; }
@@ -315,6 +335,13 @@ function stepRace(dt) {
         comboTimer = RACE.comboWindow;
         score.score += SCORE.nearMissBonus * combo;
         sfxCombo(combo);
+        juice.addShake(0.05);
+        hud.popup("+" + (SCORE.nearMissBonus * combo), "nearmiss");
+        if (combo >= 5 && combo % 5 === 0 && !comboMsHit.has(combo)) {
+          comboMsHit.add(combo);
+          hud.popup("COMBO ×" + combo + "!", "combo", true);
+          juice.addShake(0.22);
+        }
         // Fill the rampage meter while armed (not mid-rampage, not in cooldown).
         if (player.rampage <= 0 && rampageCooldown <= 0) {
           rampageMeter += 1;
@@ -324,6 +351,8 @@ function stepRace(dt) {
             player.boost = RACE.rampageDuration;   // nitrous overspeed surge
             rampageMsg = "RAMPAGE!"; rampageMsgTimer = 1.6;
             sfxRampage(); setEngineRampage(true);
+            juice.slowMo(0.32, 0.45); juice.addShake(0.5);
+            hud.popup("RAMPAGE!", "milestone", true);
           }
         }
       } else {                                     // discreet flat bonus, no combo
@@ -345,6 +374,7 @@ function stepRace(dt) {
       rampageMsg = "CLEAR!"; rampageMsgTimer = 0.9;
       rampageCooldown = RACE.rampageCooldownPasses;       // lock the meter
       sfxShockwave(); setEngineRampage(false);
+      juice.addShake(0.35); juice.slowMo(0.16, 0.5);
     }
   }
 
@@ -429,6 +459,9 @@ function render() {
   copsView.update(cops, player.z);
   scenery.update(player.z, speed01);
   environment.update(player.z);
+  // Camera shake (juice): offset → render → restore so it never accumulates.
+  juice.shake(_shake);
+  camera.position.x += _shake.x; camera.position.y += _shake.y;
   follow(camera);   // keep the sunset sky + sun + key light centered on the camera
   environment.follow(camera);
   hud.update({
@@ -438,13 +471,15 @@ function render() {
     rampageMsg, rampageMsgTimer,
   });
   fx.render();
+  camera.position.x -= _shake.x; camera.position.y -= _shake.y;
 }
 
 function frame(now) {
   let dt = (now - lastT) / 1000;
   if (dt > 0.25) dt = 0.25;
   lastT = now;
-  acc += dt;
+  const tScale = juice.update(dt);   // 0 during hitstop, <1 during slow-mo, else 1
+  acc += dt * tScale;
   while (acc >= FIXED_DT) { step(FIXED_DT); acc -= FIXED_DT; }
   render();
   requestAnimationFrame(frame);
