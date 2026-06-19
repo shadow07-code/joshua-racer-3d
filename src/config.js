@@ -20,8 +20,12 @@ export const PHYS = {
   drag: 5,
   fenceBounce: 7,
   fenceSpeedKeep: 0.88,
-  steerSpeed: 120,
-  steerSpeedFactor: 0.65,
+  // Lateral steer feel. steerSpeed is peak sideways velocity (units/s); the road
+  // is 112 wide, so 72 = a deliberate ~1.6s full traverse (vs the old twitchy
+  // ~1s at 120). steerSpeedFactor scales it down with speed so high-speed moves
+  // stay planted, not darty.
+  steerSpeed: 72,
+  steerSpeedFactor: 0.6,
   carHalfWidth: 6,
   carHalfHeight: 8,
   topSpeedKmh: 200,
@@ -97,10 +101,11 @@ export const CAMERA = {
 // the rubbery instant slide and makes the car steer like a real car: front
 // wheels turn, the nose yaws into the move, and the body banks.
 export const STEER = {
-  smoothing: 9,      // higher = snappier; lower = smoother/laggier steer easing
-  wheelMax: 0.45,    // max front-wheel yaw (radians) at full lock
-  yawIntoTurn: 0.12, // how far the whole car points into the turn (radians)
-  bank: 0.11,        // body roll into the turn (radians)
+  smoothing: 6.5,    // lateral ease rate — lower = the car builds/sheds sideways
+                     // speed more gradually (weight); higher = snappier/twitchier
+  wheelMax: 0.5,     // max front-wheel yaw (radians) at full lock
+  yawIntoTurn: 0.14, // how far the whole car points into the turn (radians)
+  bank: 0.14,        // body roll into the turn (radians) — a touch more lean = weight
 };
 
 // Gentle sweeping road curvature κ(z) = 1/radius, as a sum of slow sines so the
