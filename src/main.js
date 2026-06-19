@@ -130,6 +130,7 @@ function resetWorld() {
   attractT = 0;
   speedMsIdx = 0; comboMsHit.clear();
   clearSteer();            // drop any latched steer so a new run starts straight
+  chase.snap();            // camera jumps to behind the car (no glide-in from old z)
   juice.resetJuice();
   hud.clearPopups();
 }
@@ -188,7 +189,7 @@ function takeHit(severity, invulnSec) {
   applyCollisionLoss(player, severity, invulnSec);
   combo = 0; comboTimer = 0; rampageMeter = 0;   // breaks the streak + dumps the meter
   crashFlash = 0.5;
-  player.steerVis = 0;                            // un-bank immediately on impact
+  player.steerVis = 0; player.steerSmooth = 0;    // un-bank immediately on impact
   sfxCrash();
   juice.hitStop(0.09); juice.addShake(0.55);
   player.lives -= 1;

@@ -44,5 +44,10 @@ export function makeChaseCam(camera, road) {
     }
   }
 
-  return { update };
+  // Force the next update() to jump straight to the target instead of damping.
+  // Called on every fresh run so a reset to z=0 doesn't leave the camera gliding
+  // in from the old position (which made the car look skewed/"sideways").
+  function snap() { inited = false; }
+
+  return { update, snap };
 }
