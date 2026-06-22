@@ -18,6 +18,7 @@ export function makePlayer() {
     rampage: 0,
     steerSmooth: 0,  // eased steer (-1..1) — smooths the rubbery instant slide
     steerVis: 0,     // effective steer this frame (drives wheels/yaw/bank)
+    steerLock: 0,    // seconds of post-crash steer lockout (forces a straight recovery)
   };
 }
 
@@ -52,7 +53,12 @@ export function updatePlayer(p, dt, input, callbacks) {
 
   // Steering — eased toward the raw input so the lateral slide isn't instant
   // (kills the rubbery feel), then speed-scaled so high-speed moves are calmer.
-  p.steerSmooth += (input.steer - p.steerSmooth) * Math.min(1, dt * STEER.smoothing);
+  // After a crash a brief lockout forces the input to neutral so the car visibly
+  // recovers straight — even if a steer pad is still held/stuck (the "slanted
+  // car after crash" bug). Control returns automatically when it lapses.
+  let steerInput = input.steer;
+  if (p.steerLock > 0) { p.steerLock = Math.max(0, p.steerLock - dt); steerInput = 0; }
+  p.steerSmooth += (steerInput - p.steerSmooth) * Math.min(1, dt * STEER.smoothing);
   const steer = p.steerSmooth;
   p.steerVis = p.steerSmooth;
   const speedFrac = p.speed / PHYS.maxSpeed;

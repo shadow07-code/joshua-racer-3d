@@ -115,7 +115,7 @@ function ensureAudio() { initAudio(); resumeAudio(); startOnce(); }
 // Reset the whole world for a fresh run (also used to populate the attract scene).
 function resetWorld() {
   player.z = 0; player.x = 0; player.speed = PHYS.startSpeed;
-  player.raceTime = 0; player.steerSmooth = 0; player.steerVis = 0;
+  player.raceTime = 0; player.steerSmooth = 0; player.steerVis = 0; player.steerLock = 0;
   player.lives = RACE.startLives; player.invuln = 1.5;
   player.rampage = 0; player.boost = 0;
   traffic.list.length = 0; traffic.nextRowZ = 80; traffic.lastGapLane = 2;
@@ -189,7 +189,7 @@ function takeHit(severity, invulnSec) {
   applyCollisionLoss(player, severity, invulnSec);
   combo = 0; comboTimer = 0; rampageMeter = 0;   // breaks the streak + dumps the meter
   crashFlash = 0.5;
-  player.steerVis = 0; player.steerSmooth = 0;    // un-bank immediately on impact
+  player.steerVis = 0; player.steerSmooth = 0; player.steerLock = 0.45;   // un-bank + brief straight recovery
   sfxCrash();
   juice.hitStop(0.09); juice.addShake(0.55);
   player.lives -= 1;

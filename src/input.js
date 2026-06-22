@@ -88,12 +88,13 @@ function bindSteerButtons() {
   const btnL = document.getElementById("btn-steer-left");
   const btnR = document.getElementById("btn-steer-right");
   if (!btnL || !btnR) return;
+  const pointerSide = new Map();   // pointerId -> side currently pressing a pad
   const press = (side) => { btnHeld[side] = true; state.pressed.add("Touch"); recompute(); };
   const release = (side) => { btnHeld[side] = false; recompute(); };
   const wire = (btn, side) => {
-    btn.addEventListener("pointerdown", (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); press(side); });
-    btn.addEventListener("pointerup", (e) => { e.preventDefault(); release(side); });
-    btn.addEventListener("pointercancel", () => release(side));
+    btn.addEventListener("pointerdown", (e) => { e.preventDefault(); try { btn.setPointerCapture(e.pointerId); } catch {} pointerSide.set(e.pointerId, side); press(side); });
+    btn.addEventListener("pointerup", (e) => { e.preventDefault(); release(side); pointerSide.delete(e.pointerId); });
+    btn.addEventListener("pointercancel", (e) => { release(side); pointerSide.delete(e.pointerId); });
     btn.addEventListener("pointerleave", () => release(side));
     // If the button is hidden mid-press (e.g. a crash → game-over hides the steer
     // pads), the browser drops pointer capture without a pointerup — release here
@@ -103,6 +104,15 @@ function bindSteerButtons() {
   };
   wire(btnL, "L");
   wire(btnR, "R");
+  // Safety net: if a pad's own pointerup is ever missed (DOM churn / hidden
+  // control / lost event), a window-level up or cancel for THAT pointer still
+  // releases its side. Per-pointer, so multitouch steering isn't affected.
+  const winRelease = (e) => {
+    const side = pointerSide.get(e.pointerId);
+    if (side) { release(side); pointerSide.delete(e.pointerId); }
+  };
+  window.addEventListener("pointerup", winRelease);
+  window.addEventListener("pointercancel", winRelease);
 }
 
 let _bound = false;
