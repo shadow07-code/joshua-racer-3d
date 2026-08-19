@@ -2,7 +2,7 @@
 // rubber-fence edges. PORTED from the 2D reference (src/entities/player.js); the
 // drawing is gone (render3d/models.js owns that). `x` is the lateral offset from
 // the road CENTERLINE — pure scalar, so the curve never touches this math.
-import { PHYS, ROAD, STEER } from "../config.js";
+import { PHYS, ROAD } from "../config.js";
 
 export function makePlayer() {
   return {
@@ -51,14 +51,17 @@ export function updatePlayer(p, dt, input, callbacks) {
   const cap = p.boost > 0 ? boostCap : PHYS.maxSpeed;
   if (p.speed > cap) p.speed = cap;
 
-  // Steering — eased toward the raw input so the lateral slide isn't instant
-  // (kills the rubbery feel), then speed-scaled so high-speed moves are calmer.
-  // After a crash a brief lockout forces the input to neutral so the car visibly
-  // recovers straight — even if a steer pad is still held/stuck (the "slanted
-  // car after crash" bug). Control returns automatically when it lapses.
+  // Steering — asymmetric ease (ported from the fun 2D game): a GENTLE onset from
+  // rest makes a light touch a small, precise, deliberate cut; but releases and
+  // reversals snap fast (×3.5) so letting off and emergency dodges are instant.
+  // A post-crash lockout forces neutral so the car recovers straight even if a
+  // pad is held/stuck; the fast release-rate makes that recovery crisp too.
   let steerInput = input.steer;
   if (p.steerLock > 0) { p.steerLock = Math.max(0, p.steerLock - dt); steerInput = 0; }
-  p.steerSmooth += (steerInput - p.steerSmooth) * Math.min(1, dt * STEER.smoothing);
+  const reversing = steerInput !== 0 && p.steerSmooth !== 0 && Math.sign(steerInput) !== Math.sign(p.steerSmooth);
+  const releasing = Math.abs(steerInput) < Math.abs(p.steerSmooth);
+  const easeRate = (reversing || releasing) ? PHYS.steerEase * 3.5 : PHYS.steerEase;
+  p.steerSmooth += (steerInput - p.steerSmooth) * Math.min(1, dt * easeRate);
   const steer = p.steerSmooth;
   p.steerVis = p.steerSmooth;
   const speedFrac = p.speed / PHYS.maxSpeed;

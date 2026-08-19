@@ -2,17 +2,24 @@
 // lives, pass count, speed, combo banner, near-miss flash, crash flash, the
 // RAMPAGE pip meter + banner + tint, and the game-over panel. main.js feeds it
 // state each frame.
-import { PHYS, RACE } from "./config.js";
+import { PHYS, RACE, GRADES } from "./config.js";
+
+// Letter grade for a final score — GRADES is sorted high→low by min-score.
+function gradeFor(score) {
+  for (const g of GRADES) if (score >= g[0]) return g;
+  return GRADES[GRADES.length - 1];
+}
 
 export function makeHud(onPlayAgain) {
   const el = (id) => document.getElementById(id);
-  const scoreEl = el("score"), livesEl = el("lives"), passedEl = el("passed"), speedEl = el("speed");
+  const scoreEl = el("score"), livesEl = el("lives"), passedEl = el("passed"), speedEl = el("speed"), coinsEl = el("coins-hud");
   const comboEl = el("combo"), comboN = el("combo-n"), comboBar = el("combo-bar");
   const nearmissEl = el("nearmiss"), crashEl = el("crash-flash");
   const rampMsgEl = el("rampage-msg"), rampTintEl = el("rampage-tint"), pipsEl = el("pips");
   const goPanel = el("gameover"), goScore = el("go-score"), goBest = el("go-best"),
     goNew = el("go-new"), goPassed = el("go-passed"), goTime = el("go-time"),
-    goTop = el("go-top"), goBtn = el("go-again");
+    goTop = el("go-top"), goBtn = el("go-again"), goCoins = el("go-coins"),
+    goGradeLetter = el("go-grade-letter"), goGradeQual = el("go-grade-qual");
   const popupsEl = el("popups");
   if (goBtn && onPlayAgain) goBtn.addEventListener("click", onPlayAgain);
 
@@ -41,6 +48,7 @@ export function makeHud(onPlayAgain) {
     if (scoreEl) scoreEl.textContent = fmt(s.score);
     if (livesEl) livesEl.textContent = "♥".repeat(Math.max(0, s.lives));
     if (passedEl) passedEl.textContent = "PASSED " + s.passed;
+    if (coinsEl) coinsEl.textContent = "🪙 " + (s.coins || 0);
     if (speedEl) speedEl.textContent = Math.round(s.speed01 * PHYS.topSpeedKmh);
 
     if (comboEl) {
@@ -77,10 +85,14 @@ export function makeHud(onPlayAgain) {
   }
 
   function showGameOver(g) {
+    const [, letter, qual, color] = gradeFor(g.score);
+    if (goGradeLetter) { goGradeLetter.textContent = letter; goGradeLetter.style.color = color; }
+    if (goGradeQual) { goGradeQual.textContent = qual; goGradeQual.style.color = color; }
     if (goScore) goScore.textContent = fmt(g.score);
     if (goBest) goBest.textContent = fmt(g.best);
     if (goNew) goNew.style.display = g.isNew ? "block" : "none";
     if (goPassed) goPassed.textContent = g.passed;
+    if (goCoins) goCoins.textContent = g.coins || 0;
     if (goTime) goTime.textContent = Math.floor(g.time) + "S";
     if (goTop) goTop.textContent = g.topSpeed + " KM/H";
     if (goPanel) goPanel.classList.add("show");

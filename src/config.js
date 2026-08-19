@@ -20,12 +20,14 @@ export const PHYS = {
   drag: 5,
   fenceBounce: 7,
   fenceSpeedKeep: 0.88,
-  // Lateral steer feel. steerSpeed is peak sideways velocity (units/s); the road
-  // is 112 wide, so 72 = a deliberate ~1.6s full traverse (vs the old twitchy
-  // ~1s at 120). steerSpeedFactor scales it down with speed so high-speed moves
-  // stay planted, not darty.
-  steerSpeed: 72,
-  steerSpeedFactor: 0.6,
+  // Lateral steer feel (ported from the fun 2D game). steerSpeed is peak sideways
+  // velocity; steerEase gives an asymmetric ease — GENTLE onset from rest (a light
+  // touch is a small, precise, deliberate cut) but SNAPPY (×3.5) on releases and
+  // reversals so emergency dodges are instant. This is the key to "crisp but
+  // controllable" — a uniform smoothing made every move laggy.
+  steerSpeed: 112,
+  steerEase: 16,
+  steerSpeedFactor: 0.65,
   carHalfWidth: 6,
   carHalfHeight: 8,
   topSpeedKmh: 200,
@@ -61,6 +63,15 @@ export const RACE = {
   densityStepSeconds: 50,
   densityStepIncrement: 0.10,
   densityMax: 1.9,
+  // Tension/release pacing: traffic spacing breathes ±densityWaveAmp on a
+  // densityWavePeriod-second cycle (surge → breather → surge) so difficulty isn't
+  // monotonic. The gap lane is always left open, so every row stays threadable.
+  densityWaveAmp: 0.18,
+  densityWavePeriod: 22,
+  // Gold coins scattered down the OPEN gap lane — the ideal weaving line. Grabbing
+  // them rewards precise driving (and turns "avoid cars" into "chase a line").
+  coinRowChance: 0.28,
+  coinsPerTrail: 3,
 };
 
 export const SPAWN = {
@@ -74,7 +85,21 @@ export const SCORE = {
   nearMissBonus: 100,
   smashBonus: 150,
   survivalSecondBonus: 10,
+  coinValue: 50,           // per coin grabbed on the racing line
+  // Precision (tightness) bonus on a near-miss: a closer shave pays more,
+  // 1 → 1 + precisionMax. Within precisionPx lateral clearance = pixel-perfect.
+  precisionMax: 0.6,
+  precisionPx: 9,
 };
+
+// Game-over LETTER GRADE by final score — the instant "did I do well?" verdict
+// that fuels the retry reflex. [minScore, letter, qualifier, cssColor].
+export const GRADES = [
+  [90000, "S", "LEGENDARY!", "#ffd24a"],
+  [45000, "A", "GREAT RUN",  "#5ef08a"],
+  [18000, "B", "SOLID",      "#9be7ff"],
+  [0,     "C", "KEEP GOING", "#cfc7e6"],
+];
 
 // ── 3D presentation ──────────────────────────────────────────────────────────
 
@@ -101,11 +126,9 @@ export const CAMERA = {
 // the rubbery instant slide and makes the car steer like a real car: front
 // wheels turn, the nose yaws into the move, and the body banks.
 export const STEER = {
-  smoothing: 6.5,    // lateral ease rate — lower = the car builds/sheds sideways
-                     // speed more gradually (weight); higher = snappier/twitchier
   wheelMax: 0.5,     // max front-wheel yaw (radians) at full lock
   yawIntoTurn: 0.14, // how far the whole car points into the turn (radians)
-  bank: 0.14,        // body roll into the turn (radians) — a touch more lean = weight
+  bank: 0.14,        // body roll into the turn (radians)
 };
 
 // Gentle sweeping road curvature κ(z) = 1/radius, as a sum of slow sines so the

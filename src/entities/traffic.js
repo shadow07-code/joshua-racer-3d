@@ -5,7 +5,7 @@
 // evasion-friendly checkTrafficHit AABB. Only the drawing is gone — render3d/
 // vehicles.js renders sys.list. Collision is pure (x, z); the road curve never
 // touches it.
-import { PHYS, ROAD, RACE } from "../config.js";
+import { PHYS, ROAD, RACE, SCORE } from "../config.js";
 
 const LANES = ROAD.laneCount;
 
@@ -40,6 +40,7 @@ function laneToX(laneIdx) {
 export function makeTrafficSystem(opts = {}) {
   return {
     list: [],
+    coins: [],                   // gold coins scattered down the open gap lane
     nextRowZ: 80,
     lastGapLane: 2,
     rowGapZ: opts.rowGapZ || SPAWN_ROW_GAP,
@@ -96,6 +97,17 @@ function spawnRow(sys) {
       signalT: drift ? 0.7 + Math.random() * 0.8 : 0,
       sigPhase: Math.random() * 560,
     });
+  }
+
+  // Occasional COIN TRAIL down the open gap lane — the ideal weaving line. The
+  // gap shifts ≤1 lane/row, so successive trails form a dotted line that follows
+  // the weave. Skipped during the gentle opening rows.
+  if (!wide && Math.random() < RACE.coinRowChance) {
+    const cx = laneToX(gap);
+    const n = RACE.coinsPerTrail || 3;
+    for (let i = 0; i < n; i++) {
+      sys.coins.push({ x: cx, z: sys.nextRowZ - i * (sys.rowGapZ / n), got: false });
+    }
   }
 
   sys.nextRowZ += sys.rowGapZ + (Math.random() * 6 - 3);
@@ -158,12 +170,32 @@ export function updateTraffic(sys, dt, playerZ, cbs, clearAheadDist = 0) {
       c.passed = true; sys.passedCount++; cbs?.onPassed?.();
     }
     if (!c.nearMissed && c.passed && Math.abs(c.z - playerZ) < 18) {
-      if (Math.abs(c.x - (cbs?.playerX ?? 0)) < 18) { c.nearMissed = true; cbs?.onNearMiss?.(); }
+      const dx = Math.abs(c.x - (cbs?.playerX ?? 0));
+      if (dx < 18) {
+        c.nearMissed = true;
+        // Edge-to-edge lateral clearance → tightness 0..1 (1 = a pixel-close shave).
+        const clearance = Math.max(0, dx - (skinHalfX(c.skin) + PHYS.carHalfWidth));
+        const tightness = Math.max(0, 1 - clearance / SCORE.precisionPx);
+        cbs?.onNearMiss?.(tightness);
+      }
     }
   }
 
   resolveTrafficSeparation(sys, dt);
   sys.list = sys.list.filter(c => c.z > playerZ - 50);
+  // Drop coins once grabbed or scrolled past.
+  sys.coins = sys.coins.filter(c => !c.got && c.z > playerZ - 20);
+}
+
+// Grab any coins the player overlaps this frame — returns how many. Generous
+// window (coins are a reward), collectible always (even mid-rampage / invuln).
+export function checkCoinGrab(sys, box) {
+  let got = 0;
+  for (const c of sys.coins) {
+    if (c.got) continue;
+    if (box.x1 < c.x + 5 && box.x2 > c.x - 5 && box.z1 < c.z + 6 && box.z2 > c.z - 6) { c.got = true; got++; }
+  }
+  return got;
 }
 
 function resolveTrafficSeparation(sys, dt) {

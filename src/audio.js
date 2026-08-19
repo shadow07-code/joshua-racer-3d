@@ -116,6 +116,18 @@ export function sfxNearMiss() {
     o.connect(g); g.connect(sfxGain); o.start(t + i * 0.05); o.stop(t + i * 0.05 + 0.14);
   });
 }
+// Coin pickup — a bright two-note ting (B5 → E6).
+export function sfxCoin() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  [988, 1319].forEach((f, i) => {
+    const o = ctx.createOscillator(); o.type = "triangle"; o.frequency.value = f;
+    const g = ctx.createGain(); g.gain.value = 0;
+    g.gain.linearRampToValueAtTime(0.12, t + i * 0.055 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.055 + 0.13);
+    o.connect(g); g.connect(sfxGain); o.start(t + i * 0.055); o.stop(t + i * 0.055 + 0.15);
+  });
+}
 // Combo blip — pitch climbs a semitone per combo step, with a sparkle harmonic.
 export function sfxCombo(level) {
   if (!ctx) return;

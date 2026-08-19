@@ -66,10 +66,29 @@ The game is a **complete, playable arcade loop** with sound. Built & verified:
   **https://joshua-racer-3d.vercel.app** (project `joshua-racer-3d`, scope `antonysajan-9019`). Site +
   serverless function verified live. Leaderboard returns 503 "not configured" until Upstash is added.
 
+- **Phase 9 — FUN pass (DONE):** the owner reported the 3D "wasn't fun compared to the 2D version".
+  Diagnosed by diffing against the 2D reference: the port had kept the obstacle course but dropped the
+  *skill expression* and *reward loop*. Restored/ported:
+  1. **Steering feel** — the 2D's **asymmetric ease** (`PHYS.steerEase 16`, ×3.5 on release/reversal):
+     gentle onset from rest (deliberate, precise) but **snappy reversals** for emergency dodges.
+     Measured: onset-to-90% **133 ms**, reversal-cross-zero **17 ms**. A previous uniform `STEER.smoothing`
+     had made *every* move laggy — that was the "not fun/sluggish" culprit. `steerSpeed` back to 112.
+  2. **COINS on the racing line** (`render3d/coins.js` + `traffic.coins` + `checkCoinGrab`) — trails
+     spawn down the **open gap lane**, so the reward sits exactly on the ideal weaving path. Turns
+     "avoid cars" into "chase a line". HUD 🪙 counter + game-over stat + `sfxCoin`.
+  3. **Precision near-misses** — `onNearMiss(tightness)`; a closer shave pays up to **×1.6**
+     (`SCORE.precisionMax/precisionPx`), with hitstop + a **PERFECT!** callout on the tightest.
+  4. **Density-wave pacing** (`RACE.densityWaveAmp/Period`) — row spacing breathes ±18% on a 22 s
+     cycle (surge → breather → surge) so difficulty has rhythm instead of a flat grind.
+  5. **Letter grades** (`GRADES` C/B/A/S) on the game-over panel — the instant "did I do well?"
+     verdict that drives the retry reflex.
+  SW → **v14**. Verified headlessly (`node` importing the real sim modules): all 7 systems green.
+
 ### What's LEFT (priority order)
-1. **Connect Upstash so the leaderboard goes live** *(owner; ~5 min in the Vercel dashboard)* — the only
-   remaining shipping step. Vercel project → Storage → create **Upstash Redis** → it injects
-   `UPSTASH_REDIS_REST_URL/TOKEN` → **redeploy**. Then `/api/leaderboard` returns entries. See §6.
+1. ~~Connect Upstash~~ **DONE — the online leaderboard is LIVE.** Upstash Redis (Free tier, Mumbai)
+   is connected to the Vercel project; verified end-to-end: `GET /api/leaderboard` → `200 {"entries":[…]}`
+   and `POST` → `200 {"ok":true}` (full read/write token). ⚠️ One test row `ZZTEST` may still be on the
+   board — delete it from the Upstash **Data Browser** (`jr3d:lb:v1` member + `jr3d:lb:meta:v1` field).
 2. **Oil slicks** — the small remaining Phase 5 piece (slip hazard, no life cost). The reference
    `entities/oilspills.js` is dead code (depends on removed `RACE.totalLaps/lapLength`) → must be
    re-implemented for endless mode: spawn oil decals ahead periodically, `checkOilHit`, on hit set
@@ -249,7 +268,7 @@ npx -y serve -l 8080 .
 # find LAN IP for phone testing
 Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.PrefixOrigin -eq 'Dhcp' }
 ```
-SW is at **v10** — bump it on the next code change (and keep `sw.js`'s `ASSETS` list + `/api/` bypass in sync).
+SW is at **v14** — bump it on the next code change (and keep `sw.js`'s `ASSETS` list + `/api/` bypass in sync).
 
 > ⚠️ **localhost:8080 gotcha:** another local project ("Just A Scanner") has a **service worker** +
 > sometimes a server bound to **:8080**, which can hijack navigations and serve the wrong app. If you

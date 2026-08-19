@@ -11,12 +11,13 @@ import { initMusic, startOnce, toggleMute, isMuted, pauseMusic, resumeMusic } fr
 import { initPwa } from "./pwa.js";
 import {
   initAudio, resumeAudio, suspendAudio, startEngine, stopEngine, setEngine, setEngineRampage,
-  sfxNearMiss, sfxCombo, sfxBump, sfxCrash, sfxRampage, sfxShockwave, sfxBarrelDrop, sfxGameOver,
+  sfxNearMiss, sfxCombo, sfxBump, sfxCrash, sfxRampage, sfxShockwave, sfxBarrelDrop, sfxGameOver, sfxCoin,
   startHeliSound, stopHeliSound, isSfxEnabled, toggleSfx,
 } from "./audio.js";
 import { makePlayer, updatePlayer, playerBox, applyCollisionLoss } from "./entities/player.js";
-import { makeTrafficSystem, prepopulateTraffic, updateTraffic, checkTrafficHit, smashCar, SPAWN_ROW_GAP } from "./entities/traffic.js";
+import { makeTrafficSystem, prepopulateTraffic, updateTraffic, checkTrafficHit, checkCoinGrab, smashCar, SPAWN_ROW_GAP } from "./entities/traffic.js";
 import { makeTrafficView } from "./render3d/vehicles.js";
+import { makeCoinsView } from "./render3d/coins.js";
 import { makeCopsSystem, updateCops, checkBarrelHit } from "./entities/cops.js";
 import { makeCopsView } from "./render3d/cops3d.js";
 import { makeScene } from "./render3d/scene.js";
@@ -53,6 +54,7 @@ const _carPos = new THREE.Vector3();
 const traffic = makeTrafficSystem();
 prepopulateTraffic(traffic, 500);
 const trafficView = makeTrafficView(scene, road);
+const coinsView = makeCoinsView(scene, road);
 
 // Threats + escalation (Phase 5): police helicopter + density scaling.
 let cops = makeCopsSystem();
@@ -71,7 +73,7 @@ let playerName = getPlayerName();
 
 const score = makeScoreState();
 let combo = 0, comboTimer = 0, comboBest = 0, nearMissTimer = 0, crashFlash = 0;
-let raceTime = 0, topSpeedKmh = 0;
+let raceTime = 0, topSpeedKmh = 0, coinsCollected = 0;
 let rampageMeter = 0, rampageCooldown = 0, rampageMsg = "", rampageMsgTimer = 0;
 let heliSoundOn = false;
 
@@ -118,9 +120,10 @@ function resetWorld() {
   player.raceTime = 0; player.steerSmooth = 0; player.steerVis = 0; player.steerLock = 0;
   player.lives = RACE.startLives; player.invuln = 1.5;
   player.rampage = 0; player.boost = 0;
-  traffic.list.length = 0; traffic.nextRowZ = 80; traffic.lastGapLane = 2;
+  traffic.list.length = 0; traffic.coins.length = 0; traffic.nextRowZ = 80; traffic.lastGapLane = 2;
   traffic.rowsSpawned = 0; traffic.passedCount = 0; traffic.rowGapZ = SPAWN_ROW_GAP;
   prepopulateTraffic(traffic, 500);
+  coinsCollected = 0;
   cops = makeCopsSystem();
   startScoring(score, 0);
   combo = 0; comboTimer = 0; comboBest = 0; nearMissTimer = 0; crashFlash = 0;
@@ -204,7 +207,7 @@ function endRun() {
   sfxGameOver();
   const run = {
     score: Math.floor(score.score), best: bestEverScore(), isNew,
-    passed: traffic.passedCount, time: raceTime, topSpeed: topSpeedKmh,
+    passed: traffic.passedCount, time: raceTime, topSpeed: topSpeedKmh, coins: coinsCollected,
   };
   hud.showGameOver(run);
   setState(STATE.GAMEOVER);
@@ -319,7 +322,11 @@ function stepRace(dt) {
       densityMul = Math.min(RACE.densityMax, densityMul * (1 + RACE.densityStepIncrement));
     }
   }
-  traffic.rowGapZ = SPAWN_ROW_GAP / densityMul;
+  // Tension/release: breathe the row spacing on a slow cycle (surge → breather →
+  // surge) so the difficulty has rhythm instead of a flat grind. Gap lane stays
+  // open, so every row is still threadable.
+  const wave = 1 + RACE.densityWaveAmp * Math.sin(raceTime * (2 * Math.PI / RACE.densityWavePeriod));
+  traffic.rowGapZ = (SPAWN_ROW_GAP / densityMul) * wave;
   traffic.densityMul = densityMul;
 
   // Traffic sim + scoring (pass bonus ×combo; near-miss two tiers).
@@ -329,15 +336,21 @@ function stepRace(dt) {
       score.score += SCORE.passBonus * Math.max(1, combo);
       if (rampageCooldown > 0) rampageCooldown -= 1;     // pass-cooldown burns down
     },
-    onNearMiss: () => {
+    onNearMiss: (tightness = 0) => {
       const kmh = player.speed / PHYS.maxSpeed * PHYS.topSpeedKmh;
+      const precision = 1 + SCORE.precisionMax * tightness;     // 1 → 1.6 on a pixel-close shave
+      // A tight shave rewards skill: a micro-freeze that punctuates the moment,
+      // and a PERFECT! callout on the closest ones.
+      if (tightness >= 0.55) { juice.hitStop(0.05); juice.addShake(0.14); }
+      const perfect = tightness >= 0.7;
       if (kmh >= RACE.comboKmh) {                  // NEAR MISS COMBO territory
         combo += 1; comboBest = Math.max(comboBest, combo);
         comboTimer = RACE.comboWindow;
-        score.score += SCORE.nearMissBonus * combo;
+        const gain = Math.round(SCORE.nearMissBonus * combo * precision);
+        score.score += gain;
         sfxCombo(combo);
         juice.addShake(0.05);
-        hud.popup("+" + (SCORE.nearMissBonus * combo), "nearmiss");
+        hud.popup(perfect ? "PERFECT! +" + gain : "+" + gain, perfect ? "perfect" : "nearmiss", perfect);
         if (combo >= 5 && combo % 5 === 0 && !comboMsHit.has(combo)) {
           comboMsHit.add(combo);
           hud.popup("COMBO ×" + combo + "!", "combo", true);
@@ -357,8 +370,9 @@ function stepRace(dt) {
           }
         }
       } else {                                     // discreet flat bonus, no combo
-        score.score += SCORE.nearMissBonus;
+        score.score += Math.round(SCORE.nearMissBonus * precision);
         nearMissTimer = 0.8;
+        if (perfect) hud.popup("PERFECT!", "perfect");
         sfxNearMiss();
       }
     },
@@ -404,6 +418,14 @@ function stepRace(dt) {
       const bar = checkBarrelHit(cops, playerBox(player));
       if (bar) { bar.hit = true; if (takeHit(0.5, 1.2)) return; }
     }
+  }
+
+  // Coins on the ideal weaving line — grabbed anytime (even mid-rampage / invuln).
+  const gotCoins = checkCoinGrab(traffic, playerBox(player));
+  if (gotCoins) {
+    coinsCollected += gotCoins;
+    score.score += gotCoins * SCORE.coinValue;
+    sfxCoin();
   }
 
   // Combo decay (a lapsed chain dumps the meter), flash timers.
@@ -457,6 +479,7 @@ function render() {
   // Blink the car while invulnerable (just after a crash), but only mid-race.
   car.root.visible = !(state === STATE.RACE && player.invuln > 0 && Math.floor(performance.now() / 70) % 2 === 0);
   trafficView.update(traffic, FIXED_DT);
+  coinsView.update(traffic, player.z);
   copsView.update(cops, player.z);
   scenery.update(player.z, speed01);
   environment.update(player.z);
@@ -466,7 +489,7 @@ function render() {
   follow(camera);   // keep the sunset sky + sun + key light centered on the camera
   environment.follow(camera);
   hud.update({
-    score: score.score, lives: player.lives, passed: traffic.passedCount,
+    score: score.score, lives: player.lives, passed: traffic.passedCount, coins: coinsCollected,
     speed01, combo, comboTimer, nearMissTimer, crashFlash,
     rampageActive: player.rampage > 0, rampageMeter, rampageCooldown,
     rampageMsg, rampageMsgTimer,

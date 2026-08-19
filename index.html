@@ -58,6 +58,8 @@
       font-variant-numeric: tabular-nums; }
     #passed { position: absolute; top: calc(env(safe-area-inset-top) + 60px); left: calc(env(safe-area-inset-left) + 14px);
       font-size: 12px; letter-spacing: 2px; opacity: 0.75; }
+    #coins-hud { position: absolute; top: calc(env(safe-area-inset-top) + 78px); left: calc(env(safe-area-inset-left) + 14px);
+      font-size: 13px; font-weight: 800; letter-spacing: 1px; color: #ffd24a; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
     #combo { position: absolute; top: 16%; left: 50%; transform: translateX(-50%); text-align: center;
       opacity: 0; transition: opacity 0.12s; }
     #combo.show { opacity: 1; }
@@ -75,6 +77,9 @@
     .go-box { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 10px;
       background: #15112b; border: 2px solid #ff5a7a; border-radius: 14px; padding: 22px; text-align: center; }
     .go-title { font-size: 22px; font-weight: 900; letter-spacing: 3px; color: #ff5a7a; }
+    .go-grade { display: flex; flex-direction: column; align-items: center; gap: 0; margin: 2px 0; }
+    .go-grade-letter { font-size: 66px; font-weight: 900; line-height: 0.92; text-shadow: 0 0 22px currentColor, 0 3px 8px rgba(0,0,0,0.6); }
+    .go-grade-qual { font-size: 13px; font-weight: 800; letter-spacing: 3px; }
     #go-new { display: none; font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #ffd24a; }
     .go-score { font-size: 46px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
     .go-sub { font-size: 12px; opacity: 0.7; letter-spacing: 1px; }
@@ -162,6 +167,7 @@
     .popup.combo     { color: #ffd24a; font-size: 30px; }
     .popup.smash     { color: #ff9a3c; font-size: 26px; }
     .popup.milestone { color: #fff; font-size: 28px; text-shadow: 0 0 16px rgba(255,170,90,0.75), 0 2px 10px rgba(0,0,0,0.7); }
+    .popup.perfect   { color: #aef9ff; font-size: 30px; text-shadow: 0 0 16px rgba(150,240,255,0.95), 0 2px 10px rgba(0,0,0,0.7); }
     .popup.big       { font-size: 42px; }
     @keyframes popup-rise {
       0%   { opacity: 0; transform: translate(-50%, 16px) scale(0.7); }
@@ -261,6 +267,7 @@
     <div id="tag">JOSHUA RACER 3D</div>
     <div id="lives">♥♥♥</div>
     <div id="passed">PASSED 0</div>
+    <div id="coins-hud">🪙 0</div>
     <div id="score">0</div>
     <div id="combo"><div class="lab">COMBO</div><div id="combo-n">×2</div><div id="combo-track"><div id="combo-bar"></div></div></div>
     <div id="nearmiss">NEAR MISS +100</div>
@@ -306,11 +313,13 @@
   <div id="gameover" role="dialog" aria-label="Game over">
     <div class="go-box">
       <div class="go-title">GAME OVER</div>
+      <div class="go-grade"><span class="go-grade-letter" id="go-grade-letter">S</span><span class="go-grade-qual" id="go-grade-qual"></span></div>
       <div id="go-new">NEW RECORD!</div>
       <div class="go-score" id="go-score">0</div>
       <div class="go-sub">BEST <span id="go-best">0</span></div>
       <div class="go-stats">
         <div class="go-stat">PASSED<b id="go-passed">0</b></div>
+        <div class="go-stat">COINS<b id="go-coins">0</b></div>
         <div class="go-stat">TIME<b id="go-time">0S</b></div>
         <div class="go-stat">TOP<b id="go-top">0 KM/H</b></div>
       </div>
