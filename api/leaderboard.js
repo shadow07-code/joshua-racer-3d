@@ -161,6 +161,10 @@ module.exports = async function handler(req, res) {
     res.setHeader("Allow", "GET, POST");
     res.status(405).json({ error: "method not allowed" });
   } catch (err) {
+    // Log the cause to the Vercel runtime logs so an outage is diagnosable.
+    // The message is a status code like "redis 401" — never credentials — and
+    // the client response stays deliberately opaque.
+    console.error("leaderboard upstream error:", err && err.message);
     res.status(502).json({ error: "leaderboard upstream error" });
   }
 }
