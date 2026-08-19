@@ -28,6 +28,14 @@ export const PHYS = {
   steerSpeed: 112,
   steerEase: 16,
   steerSpeedFactor: 0.65,
+  // LATERAL GRIP — the x-factor. The car now carries sideways MOMENTUM: steering
+  // sets a target lateral velocity and the car's actual vx chases it at this
+  // rate. The gap between the two is SLIP, which over-rotates the car's nose
+  // (see STEER.driftYaw) — so the car visibly points into a turn before its mass
+  // follows, and counter-settles on release. That gap between where it points
+  // and where it's going is what makes an arcade racer feel like driving instead
+  // of sliding a cursor. Lower = looser/driftier; higher = planted/on-rails.
+  grip: 10,
   carHalfWidth: 6,
   carHalfHeight: 8,
   topSpeedKmh: 200,
@@ -117,6 +125,11 @@ export const CAMERA = {
   lookLateral: 0.72,   // how much the look-at point tracks the car laterally
   posDampK: 7.5,     // exponential damping rate for camera position
   lookDampK: 6.0,    // exponential damping rate for the look-at point
+  // Speed-reactive dolly: as speed climbs the camera eases BACK and DROPS toward
+  // the road. Low + far reads as fast (the ground rushes closer to the lens), and
+  // because it's tied to speed you FEEL acceleration as the world pulls away.
+  backAtSpeed: 7,    // extra distance behind at top speed
+  dropAtSpeed: 2.6,  // how much lower the camera sits at top speed
   fov: 66,           // FOV (Comfort Mode narrows it)
   near: 1,
   far: 700,
@@ -128,7 +141,9 @@ export const CAMERA = {
 export const STEER = {
   wheelMax: 0.5,     // max front-wheel yaw (radians) at full lock
   yawIntoTurn: 0.14, // how far the whole car points into the turn (radians)
-  bank: 0.14,        // body roll into the turn (radians)
+  bank: 0.16,        // body roll (radians) — now driven by actual lateral MASS, not input
+  driftYaw: 0.55,    // extra nose rotation from slip — the drift/oversteer look
+  pitch: 0.030,      // weight transfer: squat under power, dive on impact (radians)
 };
 
 // Gentle sweeping road curvature κ(z) = 1/radius, as a sum of slow sines so the

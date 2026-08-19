@@ -17,8 +17,12 @@ export function makePlayer() {
     lives: 3,
     rampage: 0,
     steerSmooth: 0,  // eased steer (-1..1) — smooths the rubbery instant slide
-    steerVis: 0,     // effective steer this frame (drives wheels/yaw/bank)
+    steerVis: 0,     // effective steer this frame (drives the front wheels)
     steerLock: 0,    // seconds of post-crash steer lockout (forces a straight recovery)
+    vx: 0,           // lateral VELOCITY — the car carries sideways momentum
+    slip: 0,         // -1..1 gap between steering intent and actual vx (drives drift yaw)
+    accel01: 0,      // -1..1 smoothed longitudinal accel (drives squat/dive)
+    lastSpeed: null, // speed at the end of the previous frame (catches crash losses)
   };
 }
 
@@ -40,6 +44,10 @@ function rampTarget(raceTime) {
 
 export function updatePlayer(p, dt, input, callbacks) {
   p.raceTime += dt;
+  // Speed at the END of the previous frame — NOT the start of this one — so that
+  // speed changes made outside this function (a crash calling applyCollisionLoss)
+  // are still seen here and register as a nose-dive.
+  const prevSpeed = p.lastSpeed != null ? p.lastSpeed : p.speed;
 
   const boostCap = PHYS.maxSpeed * (PHYS.boostFactor || 1);
   let target = rampTarget(p.raceTime);
@@ -66,7 +74,17 @@ export function updatePlayer(p, dt, input, callbacks) {
   p.steerVis = p.steerSmooth;
   const speedFrac = p.speed / PHYS.maxSpeed;
   const steerScale = 1 - (1 - PHYS.steerSpeedFactor) * speedFrac;
-  p.x += steer * PHYS.steerSpeed * steerScale * dt;
+
+  // LATERAL MOMENTUM. Steering sets a TARGET sideways velocity; the car's actual
+  // vx chases it at `grip`, so the mass takes a moment to follow the wheels — and
+  // keeps sliding for a moment after they straighten. The shortfall between the
+  // two is SLIP: positive when the car is steering harder than it is yet moving
+  // (nose rotates into the turn), negative on release (the car counter-settles).
+  // The renderer turns slip into extra nose yaw — that is the drift look.
+  const targetVx = steer * PHYS.steerSpeed * steerScale;
+  p.vx += (targetVx - p.vx) * Math.min(1, dt * PHYS.grip);
+  p.x += p.vx * dt;
+  p.slip = Math.max(-1, Math.min(1, (targetVx - p.vx) / PHYS.steerSpeed));
 
   // Rubber-fence edges — can't leave the asphalt; a fresh bump shaves speed once.
   const bound = ROAD.halfWidth - PHYS.carHalfWidth;
@@ -75,6 +93,7 @@ export function updatePlayer(p, dt, input, callbacks) {
   if (Math.abs(p.x) >= bound) {
     const side = p.x > 0 ? 1 : -1;
     p.x = side * bound;
+    p.vx = 0;                                     // the wall stops the sideways slide
     if (p.edgeContact !== side) {
       p.edgeContact = side;
       p.speed = Math.max(PHYS.startSpeed * 0.6, p.speed * PHYS.fenceSpeedKeep);
@@ -91,6 +110,20 @@ export function updatePlayer(p, dt, input, callbacks) {
   if (Math.abs(p.x) < bound - 2 && !holdingIntoFence) p.edgeContact = 0;
 
   p.z += p.speed * dt;
+
+  // WEIGHT TRANSFER: smoothed longitudinal acceleration, normalized so the
+  // renderer can squat the body under power and dive it on an impact (a crash
+  // drops speed hard outside this function, which reads as a big nose-dive).
+  const rawAccel = dt > 0 ? (p.speed - prevSpeed) / dt / PHYS.accel : 0;
+  const accelTarget = Math.max(-1, Math.min(1, rawAccel));
+  // ASYMMETRIC: a deceleration spike (an impact) must land on the very frame it
+  // happens, so the nose dives hard; the recovery back to squat is slow and
+  // springy. A single symmetric ease smoothed the one-frame crash impulse away
+  // entirely and the car never dived at all.
+  const rate = accelTarget < p.accel01 ? 40 : 6;
+  p.accel01 += (accelTarget - p.accel01) * Math.min(1, dt * rate);
+  p.lastSpeed = p.speed;
+
   if (p.invuln > 0) p.invuln = Math.max(0, p.invuln - dt);
 }
 

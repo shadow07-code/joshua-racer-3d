@@ -6,7 +6,7 @@
 // The horizon is ALWAYS level — camera.up stays +Y, the car model banks instead.
 // Comfort Mode raises the damping (smoother/laggier) via comfort.params().
 import * as THREE from "three";
-import { CAMERA } from "../config.js";
+import { CAMERA, PHYS } from "../config.js";
 import { params as comfortParams } from "../comfort.js";
 
 export function makeChaseCam(camera, road) {
@@ -17,8 +17,14 @@ export function makeChaseCam(camera, road) {
   let inited = false;
 
   function computeDesired(player) {
-    road.worldPos(player.z - CAMERA.back, player.x * CAMERA.lateralFollow, desiredPos);
-    desiredPos.y += CAMERA.height;
+    // Speed-reactive dolly: the faster you go, the further back and the LOWER the
+    // camera sits. Because it eases there, gaining speed is something you SEE —
+    // the world pulls away from you — and a low lens makes the ground rush.
+    const sp = Math.max(0, Math.min(1, player.speed / PHYS.maxSpeed));
+    const back = CAMERA.back + CAMERA.backAtSpeed * sp;
+    const height = CAMERA.height - CAMERA.dropAtSpeed * sp;
+    road.worldPos(player.z - back, player.x * CAMERA.lateralFollow, desiredPos);
+    desiredPos.y += height;
     road.worldPos(player.z + CAMERA.lookAhead, player.x * CAMERA.lookLateral, desiredLook);
     desiredLook.y += 2.2;
   }

@@ -84,6 +84,28 @@ The game is a **complete, playable arcade loop** with sound. Built & verified:
      verdict that drives the retry reflex.
   SW → **v14**. Verified headlessly (`node` importing the real sim modules): all 7 systems green.
 
+- **Phase 10 — DRIVING FEEL / the "x factor" (DONE):** evaluated the driving model against what
+  actually makes arcade racers feel great, and closed four structural gaps:
+  1. **LATERAL MOMENTUM + SLIP (the x-factor).** `p.x` used to follow input directly — the car had
+     no sideways mass, so there was no gap between *where it points* and *where it's going*. That
+     gap is the drift, and it's the core of every great arcade racer. Now steering sets a **target
+     lateral velocity**; `p.vx` chases it at `PHYS.grip` (10), and the shortfall is `p.slip`, which
+     the renderer turns into extra nose yaw (`STEER.driftYaw`). Measured: nose reaches **16.3°**
+     while the mass is only at 37% of its slide, then **counter-settles (slip −0.57)** on release
+     and keeps sliding. Body lean now follows **vx (actual mass)**, not the input.
+  2. **GEARBOX (`src/gearbox.js`).** The engine was one 84-second siren sweep — no rhythm. Now a
+     6-speed with progressive bands: revs climb to the redline, **drop ~43%** on an upshift, climb
+     again. Shifts at ~26/54/88/126/164 km/h, each with a `sfxShift` thud + small camera kick.
+  3. **TACHOMETER + GEAR readout** in the HUD cluster (green→gold→red, redline glow) — the classic
+     driving-game instrument, and it makes the gearbox *visible*.
+  4. **WEIGHT TRANSFER + speed-reactive camera.** Body squats under power (**nose up 1.2°**) and
+     **dives on impact (nose down 0.74°)**; the camera eases **back 7 / down 2.6 units** as speed
+     climbs so acceleration is something you see. NOTE: the impact response is deliberately
+     **asymmetric** (snap 40 / recover 6) — a symmetric ease smoothed the one-frame crash impulse
+     away entirely. Also note three.js sign: **+rotation.x = nose DOWN**.
+  SW → **v15**. Verified headlessly (real sim modules in node): drift, shift drops, squat/dive,
+  crash-lockout regression, plus the full Phase 9 suite still green.
+
 ### What's LEFT (priority order)
 1. ~~Connect Upstash~~ **DONE — the online leaderboard is LIVE.** Upstash Redis (Free tier, Mumbai)
    is connected to the Vercel project; verified end-to-end: `GET /api/leaderboard` → `200 {"entries":[…]}`
@@ -268,7 +290,7 @@ npx -y serve -l 8080 .
 # find LAN IP for phone testing
 Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.PrefixOrigin -eq 'Dhcp' }
 ```
-SW is at **v14** — bump it on the next code change (and keep `sw.js`'s `ASSETS` list + `/api/` bypass in sync).
+SW is at **v15** — bump it on the next code change (and keep `sw.js`'s `ASSETS` list + `/api/` bypass in sync).
 
 > ⚠️ **localhost:8080 gotcha:** another local project ("Just A Scanner") has a **service worker** +
 > sometimes a server bound to **:8080**, which can hijack navigations and serve the wrong app. If you

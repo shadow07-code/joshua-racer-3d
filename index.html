@@ -42,6 +42,15 @@
     #speed-wrap { position: absolute; right: calc(env(safe-area-inset-right) + 18px);
       bottom: calc(env(safe-area-inset-bottom) + 18px); text-align: right; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
     #speed { font-size: 60px; font-weight: 800; line-height: 0.9; letter-spacing: 1px; }
+    /* Tachometer — revs sweep within a gear and snap back on each upshift. The
+       rise-drop-rise pulse is what makes the car read as a working machine. */
+    #tach { width: 148px; height: 7px; margin: 0 0 7px auto; border-radius: 4px; overflow: hidden;
+      background: rgba(255,255,255,0.13); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14); }
+    #tach-fill { height: 100%; width: 0%; background: #5ef08a; border-radius: 4px;
+      transition: width 0.06s linear, background-color 0.12s linear; }
+    #tach.redline { box-shadow: inset 0 0 0 1px rgba(255,90,122,0.9), 0 0 12px rgba(255,90,122,0.55); }
+    #gear-row { font-size: 11px; letter-spacing: 3px; opacity: 0.75; margin-top: 3px; }
+    #gear-row b { font-size: 19px; font-weight: 900; color: #ffd24a; letter-spacing: 0; }
     #speed-unit { font-size: 16px; font-weight: 700; opacity: 0.85; letter-spacing: 3px; }
     #tag { position: absolute; top: calc(env(safe-area-inset-top) + 12px);
       left: calc(env(safe-area-inset-left) + 14px); font-size: 12px; letter-spacing: 2px; opacity: 0.7; }
@@ -273,7 +282,11 @@
     <div id="nearmiss">NEAR MISS +100</div>
     <div id="rampage-msg">RAMPAGE!</div>
     <div id="pips"></div>
-    <div id="speed-wrap"><span id="speed">0</span><br><span id="speed-unit">KM/H</span></div>
+    <div id="speed-wrap">
+      <div id="tach"><div id="tach-fill"></div></div>
+      <span id="speed">0</span><br><span id="speed-unit">KM/H</span>
+      <div id="gear-row">GEAR <b id="gear">1</b></div>
+    </div>
   </div>
 
   <div id="popups" aria-hidden="true"></div>

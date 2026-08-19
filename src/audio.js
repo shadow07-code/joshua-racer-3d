@@ -2,6 +2,7 @@
 // PORTED from the 2D reference src/audio.js (the synth voices are kept ~verbatim).
 // The dual chiptune MUSIC tracks are dropped — the supplied MP3 (music.js) is the
 // music bed now. Everything here routes through one SFX channel (one toggle).
+import { gearAt } from "./gearbox.js";
 
 const A4 = 440;
 const SEMI = { C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5, "F#": 6, Gb: 6, G: 7, "G#": 8, Ab: 8, A: 9, "A#": 10, Bb: 10, B: 11 };
@@ -76,19 +77,39 @@ export function stopEngine() {
   engineGain.disconnect(); engineGainSub.disconnect(); engineFilt.disconnect();
   engineOsc = engineOsc2 = engineOscSub = engineGain = engineGainSub = engineFilt = null;
 }
+// Engine note driven by REVS THROUGH A GEARBOX, not raw speed. Within a gear the
+// pitch climbs to the redline; an upshift drops it back and it climbs again. That
+// rise-drop-rise pulse is the heartbeat that makes a car sound like a machine
+// being worked instead of a siren sweeping for 84 seconds.
 export function setEngine(speed01) {
   if (!engineOsc || !ctx) return;
   const s = Math.max(0, Math.min(1, speed01));
+  const { gear, rev } = gearAt(s);
   const t = ctx.currentTime;
-  const curve = Math.pow(s, 1.7);
-  const f = 38 + 300 * curve;
-  engineOsc.frequency.setTargetAtTime(f, t, 0.06);
-  engineOsc2.frequency.setTargetAtTime(f * 1.006, t, 0.06);
-  engineOscSub.frequency.setTargetAtTime(f * 0.5, t, 0.06);
-  if (!_engineRampage) engineFilt.frequency.setTargetAtTime(320 + 1900 * curve, t, 0.08);
-  const vol = 0.030 + 0.055 * curve;
+  // Each gear sits a little higher overall, so top gear is still the highest note
+  // even though every gear starts its sweep low.
+  const base = 38 + (gear - 1) * 13;
+  const span = 150 + (gear - 1) * 9;
+  const f = base + span * Math.pow(rev, 1.15);
+  // Short time constant so an upshift is heard as a distinct drop, not a slur.
+  engineOsc.frequency.setTargetAtTime(f, t, 0.045);
+  engineOsc2.frequency.setTargetAtTime(f * 1.006, t, 0.045);
+  engineOscSub.frequency.setTargetAtTime(f * 0.5, t, 0.045);
+  // Brightness opens with revs (strain) and with outright speed (wind).
+  if (!_engineRampage) engineFilt.frequency.setTargetAtTime(320 + 900 * rev + 950 * s, t, 0.07);
+  const vol = 0.030 + 0.030 * rev + 0.028 * s;
   engineGain.gain.setTargetAtTime(vol, t, 0.06);
   engineGainSub.gain.setTargetAtTime(vol * 0.70, t, 0.06);
+}
+
+// Upshift thud — a short muted transient so a gear change is FELT, not just heard.
+export function sfxShift() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type = "triangle";
+  o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(74, t + 0.07);
+  const g = ctx.createGain(); g.gain.value = 0.10; g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+  o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.11);
 }
 export function setEngineRampage(on) {
   if (!engineFilt || !ctx || _engineRampage === on) return;

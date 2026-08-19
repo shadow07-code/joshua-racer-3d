@@ -13,6 +13,7 @@ function gradeFor(score) {
 export function makeHud(onPlayAgain) {
   const el = (id) => document.getElementById(id);
   const scoreEl = el("score"), livesEl = el("lives"), passedEl = el("passed"), speedEl = el("speed"), coinsEl = el("coins-hud");
+  const tachEl = el("tach"), tachFill = el("tach-fill"), gearEl = el("gear");
   const comboEl = el("combo"), comboN = el("combo-n"), comboBar = el("combo-bar");
   const nearmissEl = el("nearmiss"), crashEl = el("crash-flash");
   const rampMsgEl = el("rampage-msg"), rampTintEl = el("rampage-tint"), pipsEl = el("pips");
@@ -50,6 +51,14 @@ export function makeHud(onPlayAgain) {
     if (passedEl) passedEl.textContent = "PASSED " + s.passed;
     if (coinsEl) coinsEl.textContent = "🪙 " + (s.coins || 0);
     if (speedEl) speedEl.textContent = Math.round(s.speed01 * PHYS.topSpeedKmh);
+    // Tach + gear: green → gold → red as the revs climb to the redline.
+    if (tachFill) {
+      const rev = Math.max(0, Math.min(1, s.rev || 0));
+      tachFill.style.width = (rev * 100).toFixed(1) + "%";
+      tachFill.style.backgroundColor = rev > 0.88 ? "#ff5a7a" : rev > 0.70 ? "#ffd24a" : "#5ef08a";
+      if (tachEl) tachEl.classList.toggle("redline", rev > 0.88);
+    }
+    if (gearEl) gearEl.textContent = s.gear || 1;
 
     if (comboEl) {
       if (s.combo >= 2) {

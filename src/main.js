@@ -11,7 +11,7 @@ import { initMusic, startOnce, toggleMute, isMuted, pauseMusic, resumeMusic } fr
 import { initPwa } from "./pwa.js";
 import {
   initAudio, resumeAudio, suspendAudio, startEngine, stopEngine, setEngine, setEngineRampage,
-  sfxNearMiss, sfxCombo, sfxBump, sfxCrash, sfxRampage, sfxShockwave, sfxBarrelDrop, sfxGameOver, sfxCoin,
+  sfxNearMiss, sfxCombo, sfxBump, sfxCrash, sfxRampage, sfxShockwave, sfxBarrelDrop, sfxGameOver, sfxCoin, sfxShift,
   startHeliSound, stopHeliSound, isSfxEnabled, toggleSfx,
 } from "./audio.js";
 import { makePlayer, updatePlayer, playerBox, applyCollisionLoss } from "./entities/player.js";
@@ -30,6 +30,7 @@ import { makeEffects } from "./render3d/effects.js";
 import { makeComposer } from "./render3d/postfx.js";
 import { makeScoreState, startScoring, tickScore, finalizeScore, bestEverScore } from "./scoring.js";
 import { makeHud } from "./hud.js";
+import { gearAt } from "./gearbox.js";
 import * as ui from "./ui.js";
 import { setPlayerName, getPlayerName, fetchTop, submitScore, flushPending, cachedTop } from "./leaderboard.js";
 
@@ -82,6 +83,7 @@ const SPEED_MILESTONES = [120, 150, 180, 200];
 let speedMsIdx = 0;             // next speed milestone to fire
 const comboMsHit = new Set();   // combo milestones already celebrated this run
 const _shake = { x: 0, y: 0 };
+let lastGear = 1;               // for upshift detection (thud + kick)
 
 // First-run steering tutorial — shown once, then remembered.
 const TUTORIAL_KEY = "jr3d.tutorialSeen";
@@ -118,6 +120,7 @@ function ensureAudio() { initAudio(); resumeAudio(); startOnce(); }
 function resetWorld() {
   player.z = 0; player.x = 0; player.speed = PHYS.startSpeed;
   player.raceTime = 0; player.steerSmooth = 0; player.steerVis = 0; player.steerLock = 0;
+  player.vx = 0; player.slip = 0; player.accel01 = 0; player.lastSpeed = null; lastGear = 1;
   player.lives = RACE.startLives; player.invuln = 1.5;
   player.rampage = 0; player.boost = 0;
   traffic.list.length = 0; traffic.coins.length = 0; traffic.nextRowZ = 80; traffic.lastGapLane = 2;
@@ -192,7 +195,8 @@ function takeHit(severity, invulnSec) {
   applyCollisionLoss(player, severity, invulnSec);
   combo = 0; comboTimer = 0; rampageMeter = 0;   // breaks the streak + dumps the meter
   crashFlash = 0.5;
-  player.steerVis = 0; player.steerSmooth = 0; player.steerLock = 0.45;   // un-bank + brief straight recovery
+  player.steerVis = 0; player.steerSmooth = 0; player.vx = 0; player.slip = 0;
+  player.steerLock = 0.45;                        // un-bank + brief straight recovery
   sfxCrash();
   juice.hitStop(0.09); juice.addShake(0.55);
   player.lives -= 1;
@@ -296,6 +300,10 @@ function stepAttract(dt) {
   const sway = Math.sin(attractT * 0.45);
   player.x = sway * 22;
   player.steerVis = sway * 0.45;                 // visual bank/yaw only
+  // Lean/drift now read from lateral MASS, so give the attract car a real vx
+  // (the derivative of its sway) and a little slip — otherwise it drives flat.
+  player.vx = Math.cos(attractT * 0.45) * 0.45 * 22;
+  player.slip = player.steerVis * 0.25;
   updateTraffic(traffic, dt, player.z, { playerX: player.x, onPassed: () => {}, onNearMiss: () => {} });
   const speed01 = player.speed / PHYS.maxSpeed;
   const fov = effects.update(dt, speed01);
@@ -440,6 +448,10 @@ function stepRace(dt) {
 
   const speed01 = player.speed / PHYS.maxSpeed;
   setEngine(speed01);
+  // Upshift: a thud + a small kick so a gear change is felt, not just heard.
+  const gearNow = gearAt(speed01).gear;
+  if (gearNow > lastGear) { sfxShift(); juice.addShake(0.07); }
+  lastGear = gearNow;
   const fov = effects.update(dt, speed01);
   chase.update(dt, player, fov);
 }
@@ -472,8 +484,18 @@ function render() {
   // and BANK the model into the steer (camera stays level — comfort lever).
   road.worldPos(player.z, player.x, _carPos);
   car.root.position.copy(_carPos);
-  car.root.rotation.y = road.headingAt(player.z) + player.steerVis * STEER.yawIntoTurn;
-  car.body.rotation.z = -player.steerVis * STEER.bank;
+  // Nose yaw = road heading + steering intent + SLIP. The slip term is the drift:
+  // the car rotates into a turn ahead of its mass, and counter-settles on release.
+  car.root.rotation.y = road.headingAt(player.z)
+    + player.steerVis * STEER.yawIntoTurn
+    + (player.slip || 0) * STEER.driftYaw;
+  // Lean follows the actual sideways MASS (vx), not the input — so the body keeps
+  // leaning while the car is still sliding, and rights itself as the slide bleeds off.
+  car.body.rotation.z = -(player.vx || 0) / PHYS.steerSpeed * STEER.bank;
+  // Weight transfer: squat under power, dive under braking/impact.
+  // Negated: a positive rotation.x pitches the nose DOWN in three.js, and under
+  // power the nose should lift (squat) — a crash then dives it.
+  car.body.rotation.x = -(player.accel01 || 0) * STEER.pitch;
   car.setSteer(player.steerVis * STEER.wheelMax);
   car.setRampage(player.rampage > 0, performance.now() / 1000);
   // Blink the car while invulnerable (just after a crash), but only mid-race.
@@ -490,7 +512,7 @@ function render() {
   environment.follow(camera);
   hud.update({
     score: score.score, lives: player.lives, passed: traffic.passedCount, coins: coinsCollected,
-    speed01, combo, comboTimer, nearMissTimer, crashFlash,
+    speed01, combo, comboTimer, nearMissTimer, crashFlash, ...gearAt(speed01),
     rampageActive: player.rampage > 0, rampageMeter, rampageCooldown,
     rampageMsg, rampageMsgTimer,
   });
