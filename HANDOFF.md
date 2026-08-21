@@ -1,315 +1,273 @@
-# Joshua Racer 3D — Handoff / Status
+# Joshua Racer 3D — Handoff
 
 A third-person 3D arcade racer (Need for Speed 2 SE vibe) — a remake of the finished 2D game
-**Joshua 1 Racer**. Vanilla JS ES modules, Three.js via CDN-style import map (vendored locally),
-**no build step**. This doc is the single source of truth for picking the project back up.
+**Joshua 1 Racer**. Vanilla JS ES modules + Three.js via import map (vendored), **no build step**.
+This doc is the single source of truth for picking the project back up.
 
-> Companion brief: `JOSHUA_RACER_3D_BRIEF.md` (the original spec — note: several of its defaults
-> were **overridden** by the owner; see "Direction / decisions" below).
-> Reference 2D game to port from: **`D:\Claude Code\Joshua racer 1\src\`**.
-> Persistent memory also lives in the Claude memory dir (`joshua-racer-3d-direction.md`,
-> `joshua-racer-3d-architecture.md`).
+| | |
+|---|---|
+| **Live game** | https://joshua-racer-3d.vercel.app |
+| **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
+| **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
+| **Service worker** | `jr3d-v16` — **bump on every code change** |
+| **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
+| **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
----
-
-## 1. Current status (what's DONE)
-
-The game is a **complete, playable arcade loop** with sound. Built & verified:
-
-- **Phase 0 — core feel:** gentle **curved** endless road, **damped chase cam** (locked horizon),
-  two-phase speed ramp, binary tap-steer, rubber-fence edges, fog, speed vignette, Comfort Mode.
-- **Player car:** sleek **red road supercar** (McLaren-F1-style: low body, glass greenhouse,
-  **dark twin racing stripes**, **round quad taillights**, alloy wheels) with the white **"J"** on
-  the rear deck. (This **replaced** the brief's open-wheel F1, per the owner's NFS2 reference.)
-- **Phase 2 — traffic:** ported `(x,z)` sim (row spawn + guaranteed shifting gap lane, no-collision
-  AI, `checkTrafficHit`); 14 glossy vehicle types (sedan/taxi/SUV/truck/bus) with brake + amber
-  turn-signal lights; collision → lose a life.
-- **Phase 3 — scoring/HUD:** distance + pass×combo + near-miss (two tiers) + survival; persisted
-  hi-score; **DOM HUD** (score/lives/passed/speed/combo banner/near-miss flash); **game-over panel**
-  (score/best/NEW RECORD/passed/time/top + PLAY AGAIN). RACE↔GAMEOVER state machine.
-- **Phase 4 — Rampage:** 10 combo near-misses fill a **pip meter** → ~7s invincible nitrous
-  **smash-through** (smashBonus×combo + speed surge), exit shockwave, 10-pass cooldown; nitrous
-  aura (blue ring + orange flame jets) + RAMPAGE!/CLEAR! banner.
-- **Phase 5 (partial) — threats:** **police helicopter** (3D model w/ spinning rotor + beacon,
-  sortie AI, drops **flaming barrels** above 150 km/h, single→dual patrol) + **density scaling**
-  (traffic compounds after top speed). **Oil slicks NOT done yet.**
-- **Phase 6 — audio:** procedural Web Audio — F1 **engine** (rumble→wail, opens up in rampage),
-  **SFX** (near-miss, combo chime, crash, bump, rampage whoosh, shockwave, barrel drop, game-over),
-  **helicopter rotor** loop. 🎵 music + 🔊 SFX toolbar toggles. Music bed = the owner's MP3.
-- **Environments:** **coastal causeway** (road on a sand embankment over the **sea**, sun shimmer)
-  ↔ **tunnels** (arched concrete + streaming emissive ceiling lights), zone-cycled. **Bridge NOT done.**
-- **Visual polish:** neutral warm-dusk palette (NOT pink), soft camera-facing **sun sprite**,
-  subtle **bloom** (vendored UnrealBloom), rounded/glossy clearcoat car paint.
-- **PWA scaffold:** manifest (`orientation: landscape`), service worker (network-first + precache),
-  install funnel ("Install the game — Yes/No"), rotate-to-landscape gate, SVG icons.
-- **Phase 7 — Ship it (DONE; deploy pending owner accounts):** full arcade **shell + state machine**
-  (`TITLE → NAME_ENTRY → (TUTORIAL) → RACE ↔ PAUSED → GAMEOVER`, plus `LEADERBOARD`) in `main.js`;
-  DOM **title screen** over a **live 3D attract scene** (the car auto-drives behind the menus);
-  **name entry** (remembered name); **online leaderboard** (`src/leaderboard.js` client +
-  `api/leaderboard.js` Upstash serverless + `vercel.json`) reachable from title & game-over, with
-  graceful offline cache + one-shot pending-submit retry; **first-run tutorial** card (gated by
-  `jr3d.tutorialSeen`); **pause** (⏸ toolbar btn / `p` key) + **auto-pause** on blur/visibilitychange;
-  game-over panel gained **LEADERBOARD / EXIT** actions. SW bumped to **v9** (+ `ui.js`/`leaderboard.js`
-  precached, `/api/` bypassed so the board never caches). Overlay DOM/CSS live in `index.html`;
-  overlay wiring in `src/ui.js`. **Verified in Chrome** (every transition, offline degradation,
-  attract sim, no console errors). ⏳ **Only the live deploy remains** — needs the owner's Vercel
-  account + a fresh Upstash store (see §6).
-
-- **Phase 8 — juice + fixes (DONE):** a game-feel pass (`src/juice.js`): **hitstop** on crash/smash,
-  **slow-mo** on rampage trigger/exit, **camera shake** (trauma model), and floating **score/milestone
-  popups** (`hud.popup`, styled in `index.html`, container `#popups`). Wired in `main.js` (frame-time
-  scale + `render()` shake offset→restore + event hooks). Milestone callouts at 120/150/180/200 km/h
-  and combo ×5/×10/×15/×20. All juice is **Comfort-Mode-aware** (no slow-mo, gentler shake). Also fixed
-  the **"slanted car" bug** — a held on-screen steer pad stayed latched when a crash hid the controls;
-  now released on `lostpointercapture` + `clearSteer()` on every fresh run (`input.js`). SW → **v10**.
-- **DEPLOYED & LIVE:** GitHub `https://github.com/shadow07-code/joshua-racer-3d` (public) · Vercel
-  **https://joshua-racer-3d.vercel.app** (project `joshua-racer-3d`, scope `antonysajan-9019`). Site +
-  serverless function verified live. Leaderboard returns 503 "not configured" until Upstash is added.
-
-- **Phase 9 — FUN pass (DONE):** the owner reported the 3D "wasn't fun compared to the 2D version".
-  Diagnosed by diffing against the 2D reference: the port had kept the obstacle course but dropped the
-  *skill expression* and *reward loop*. Restored/ported:
-  1. **Steering feel** — the 2D's **asymmetric ease** (`PHYS.steerEase 16`, ×3.5 on release/reversal):
-     gentle onset from rest (deliberate, precise) but **snappy reversals** for emergency dodges.
-     Measured: onset-to-90% **133 ms**, reversal-cross-zero **17 ms**. A previous uniform `STEER.smoothing`
-     had made *every* move laggy — that was the "not fun/sluggish" culprit. `steerSpeed` back to 112.
-  2. **COINS on the racing line** (`render3d/coins.js` + `traffic.coins` + `checkCoinGrab`) — trails
-     spawn down the **open gap lane**, so the reward sits exactly on the ideal weaving path. Turns
-     "avoid cars" into "chase a line". HUD 🪙 counter + game-over stat + `sfxCoin`.
-  3. **Precision near-misses** — `onNearMiss(tightness)`; a closer shave pays up to **×1.6**
-     (`SCORE.precisionMax/precisionPx`), with hitstop + a **PERFECT!** callout on the tightest.
-  4. **Density-wave pacing** (`RACE.densityWaveAmp/Period`) — row spacing breathes ±18% on a 22 s
-     cycle (surge → breather → surge) so difficulty has rhythm instead of a flat grind.
-  5. **Letter grades** (`GRADES` C/B/A/S) on the game-over panel — the instant "did I do well?"
-     verdict that drives the retry reflex.
-  SW → **v14**. Verified headlessly (`node` importing the real sim modules): all 7 systems green.
-
-- **Phase 10 — DRIVING FEEL / the "x factor" (DONE):** evaluated the driving model against what
-  actually makes arcade racers feel great, and closed four structural gaps:
-  1. **LATERAL MOMENTUM + SLIP (the x-factor).** `p.x` used to follow input directly — the car had
-     no sideways mass, so there was no gap between *where it points* and *where it's going*. That
-     gap is the drift, and it's the core of every great arcade racer. Now steering sets a **target
-     lateral velocity**; `p.vx` chases it at `PHYS.grip` (10), and the shortfall is `p.slip`, which
-     the renderer turns into extra nose yaw (`STEER.driftYaw`). Measured: nose reaches **16.3°**
-     while the mass is only at 37% of its slide, then **counter-settles (slip −0.57)** on release
-     and keeps sliding. Body lean now follows **vx (actual mass)**, not the input.
-  2. **GEARBOX (`src/gearbox.js`).** The engine was one 84-second siren sweep — no rhythm. Now a
-     6-speed with progressive bands: revs climb to the redline, **drop ~43%** on an upshift, climb
-     again. Shifts at ~26/54/88/126/164 km/h, each with a `sfxShift` thud + small camera kick.
-  3. **TACHOMETER + GEAR readout** in the HUD cluster (green→gold→red, redline glow) — the classic
-     driving-game instrument, and it makes the gearbox *visible*.
-  4. **WEIGHT TRANSFER + speed-reactive camera.** Body squats under power (**nose up 1.2°**) and
-     **dives on impact (nose down 0.74°)**; the camera eases **back 7 / down 2.6 units** as speed
-     climbs so acceleration is something you see. NOTE: the impact response is deliberately
-     **asymmetric** (snap 40 / recover 6) — a symmetric ease smoothed the one-frame crash impulse
-     away entirely. Also note three.js sign: **+rotation.x = nose DOWN**.
-  SW → **v15**. Verified headlessly (real sim modules in node): drift, shift drops, squat/dive,
-  crash-lockout regression, plus the full Phase 9 suite still green.
-
-- **Phase 11 — install funnel, rebuilt in the original's style (DONE):** the heavy "INSTALL THE
-  GAME — Yes/No" modal fired on **every** load and dead-ended when no native prompt existed. Replaced
-  with the 2D game's proven three-part funnel (`src/pwa.js` rewritten):
-  1. **First-load SPLASH shown ONCE** per browser (`jr3d.installSplashSeen`), translucent over the
-     live attract scene: "🏁 JOSHUA RACER 3D" + a glowing **📲 INSTALL APP** and a soft
-     *"play in browser instead (not recommended)"*. Never shown in the installed app.
-  2. **PERSISTENT `#btn-install`** ("📲 ADD TO HOME SCREEN") in the title button stack with a
-     breathing halo (`@keyframes installGlow`), so the offer is always one tap away after the splash.
-     `setInstallButtonVisible()` is exported and called from `main.js` `syncOverlays()` — visible on
-     **TITLE only**, and self-suppressing via `shouldOfferInstall()`.
-  3. **Instructions BANNER** (`#install-banner`) for platforms with no native prompt — iOS Safari
-     (no install API at all) and Android before its engagement heuristic fires. The old modal just
-     closed in that case, which was a dead end on exactly the platforms needing help.
-  `shouldOfferInstall()` = `!isStandalone() && !installedThisSession` — deliberately **not** gated on
-  the sticky `jr3d.installed` key (it survives an uninstall and would hide the CTA forever).
-  SW → **v16**. Verified in Chrome: splash → dismiss → persistent button → banner → state-gating.
-
-### What's LEFT (priority order)
-1. ~~Connect Upstash~~ **DONE — the online leaderboard is LIVE.** Upstash Redis (Free tier, Mumbai)
-   is connected to the Vercel project; verified end-to-end: `GET /api/leaderboard` → `200 {"entries":[…]}`
-   and `POST` → `200 {"ok":true}` (full read/write token). ⚠️ One test row `ZZTEST` may still be on the
-   board — delete it from the Upstash **Data Browser** (`jr3d:lb:v1` member + `jr3d:lb:meta:v1` field).
-2. **Oil slicks** — the small remaining Phase 5 piece (slip hazard, no life cost). The reference
-   `entities/oilspills.js` is dead code (depends on removed `RACE.totalLaps/lapLength`) → must be
-   re-implemented for endless mode: spawn oil decals ahead periodically, `checkOilHit`, on hit set
-   a brief slip (speed drop + steering wobble via a `player.oilTimer`), **no life cost**, no combo break.
-3. **Bridge** environment — add a `"bridge"` zone in `render3d/zones.js` + render suspension
-   towers/railings over the sea in `environment.js` (mirror the tunnel pool pattern).
+The game is **complete and playable**: full arcade shell, traffic, scoring, rampage, helicopter,
+coins, audio, PWA install, and an online leaderboard. Persistent memory also lives in the Claude
+memory dir (`joshua-racer-3d-direction.md`, `joshua-racer-3d-architecture.md`).
 
 ---
 
-## 2. Direction / decisions (these OVERRIDE the brief)
+## 1. Open items (start here)
 
-- **Spectacle-first**, comfort is an **opt-in safety net** (Comfort Mode toggle), not a veto.
-  The owner is fine on motion comfort.
+1. **🔴 The online leaderboard is DOWN — needs the owner.** The Upstash Redis database is
+   unreachable: Vercel's runtime logs show `leaderboard upstream error: fetch failed` (a network/DNS
+   failure, *not* auth — that would log `redis 401`). The env vars are still set in the project, so
+   the most likely cause is the **free-tier DB was reclaimed after ~2 months idle**. Fix: create a
+   new free DB at upstash.com, then update `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` in
+   Vercel → Settings → Environment Variables → **Redeploy**. Details in §7. *The game degrades
+   gracefully meanwhile ("OFFLINE — SHOWING CACHED") and pending scores retry on a later load.*
+2. **Oil slicks** — the last missing Phase 5 piece. The reference `entities/oilspills.js` is dead
+   code (depends on removed `RACE.totalLaps`/`lapLength`) → must be re-implemented for endless mode:
+   spawn oil decals ahead periodically, `checkOilHit`, on hit set a brief slip (speed drop + steering
+   wobble via `player.oilTimer`). **No life cost, no combo break.**
+3. **Bridge environment** — add a `"bridge"` zone to `render3d/zones.js` + suspension towers/railings
+   over the sea in `environment.js` (mirror the tunnel segment-pool pattern).
+4. **Deeper fun roadmap** (ranked, not yet built): **oncoming-traffic lane** (higher closing speed =
+   bigger near-miss payoff), **nitro pickups** (a reason to pick a lane), **ramps / jumps**,
+   **dusk→night cycle** with headlights and neon.
+
+---
+
+## 2. Direction & locked decisions (these OVERRIDE the brief)
+
+- **Spectacle-first.** Comfort is an **opt-in safety net** (Comfort Mode toggle), never a veto — the
+  owner is fine on motion comfort.
 - **Visual target:** Need for Speed 2 SE — glossy cars, atmospheric varied environments.
-- **Tone:** **neutral warm dusk** (owner rejected the loud pink/synthwave). Subtle bloom only.
-- **Player car:** **road supercar**, not open-wheel F1 (kept red + "J").
-- **Road:** **gentle sweeping curves** (not straight).
-- **Landscape-only**; heavy PWA install funnel.
-- **No build step:** Three.js via import map, **vendored** under `vendor/` (offline-capable).
-- **Infra (for Phase 7):** **new** repo + **new** Vercel project + **fresh** Upstash store; reuse
-  the reference's leaderboard API/client code.
+- **Tone:** **neutral warm dusk**. The owner rejected loud pink/synthwave. Subtle bloom only.
+- **Player car:** **road supercar** (McLaren-F1-ish), not the brief's open-wheel F1. Red, with "J".
+- **Road:** gentle sweeping curves, not straight.
+- **Landscape-only.**
+- **Install funnel:** mimic the **original Joshua Racer's** — a splash shown **once**, a
+  **persistent** home-screen button, and real instructions where there's no native prompt.
+  (This *superseded* an earlier "heavy modal on every load" direction — nagging is out.)
+- **No build step.** Three.js via import map, **vendored** under `vendor/` so the PWA works offline.
+- **The 2D game is the fun benchmark.** When something feels off, diff against the reference rather
+  than inventing — that is how both big feel regressions were found (see §6).
 
 ---
 
-## 3. Architecture (the key idea)
+## 3. Architecture
 
 **Simulate in 2D `(x, z)`, render in 3D.** Every entity is `x` (lateral offset from the road
-**centerline**) and `z` (distance along the road). Collision/AI/scoring are pure scalar `(x,z)`
-math and port ~line-for-line from the 2D reference. The **curve + 3D rendering only affect the
-camera/visuals** — `render3d/road.js` owns `curveAt(z)` → a centerline path `P(z)`; any entity maps
-to world `P(z) + x·normal(z)`. Collision never sees the curve. The chase cam follows behind along
-the tangent, locked horizon (the **car model** banks, not the camera).
+**centerline**) and `z` (distance along the road). Collision, AI and scoring are pure scalar `(x,z)`
+math that ports ~line-for-line from the 2D reference. **The curve and the 3D rendering only affect
+the camera and visuals** — `render3d/road.js` owns `curveAt(z)` → a centerline path `P(z)`; an entity
+maps to world `P(z) + x·normal(z)`. **Collision never sees the curve.** The chase cam follows behind
+along the tangent with a locked horizon — the **car model** banks, never the camera.
 
 ### File map
 ```
-index.html                 WebGL canvas + DOM HUD/menus overlay + import map (three, three/addons/)
-vendor/three.module.js     Three.js r0.160 (vendored)
-vendor/jsm/                 vendored addons: postprocessing/* (bloom), geometries/RoundedBoxGeometry
-assets/audio/redline_at_midnight.mp3   music bed (owner-supplied)
-manifest.webmanifest · sw.js (VERSION jr3d-v9) · icons/*.svg
-vercel.json                cleanUrls + cache headers (no-cache shell/api, long-cache vendor/assets)
-api/leaderboard.js         zero-dep Vercel serverless leaderboard (Upstash Redis REST)
-.claude/launch.json        preview-server config (npx serve)
+index.html            WebGL canvas + ALL DOM overlays/HUD + CSS + import map (three, three/addons/)
+vendor/three.module.js   Three.js r0.160 (vendored)  ·  vendor/jsm/  bloom addons + RoundedBox
+assets/audio/redline_at_midnight.mp3                 music bed (owner-supplied)
+manifest.webmanifest · sw.js (jr3d-v16) · icons/*.svg · vercel.json (cleanUrls + cache headers)
+api/leaderboard.js    zero-dep Vercel serverless leaderboard (Upstash Redis REST)
+.claude/launch.json   preview-server config
 src/
-  config.js        ALL tuning: PHYS, ROAD, RACE, SCORE, CAMERA, STEER, CURVE, FOG, WORLD, KEYS
-  main.js          game loop (fixed 1/60), RACE↔GAMEOVER state machine, ALL wiring/scoring/collision
-  input.js         keyboard + touch + on-screen steer pads
-  music.js         MP3 music bed (loop, mute, starts on first gesture)
-  audio.js         procedural Web Audio: engine + SFX + heli rotor (one SFX channel + toggle)
-  scoring.js       score + localStorage hi-score
-  hud.js           DOM HUD manager + game-over panel + pip meter + rampage banner
-  ui.js            menu overlay manager (title/name/leaderboard/tutorial/paused) + lb render
-  leaderboard.js   leaderboard client (fetch/submit + offline cache + pending retry; jr3d.* keys)
-  comfort.js       Comfort Mode parameter sets
-  pwa.js           SW registration + install funnel + landscape gate
+  config.js       ALL tuning: PHYS, ROAD, RACE, SPAWN, SCORE, GRADES, CAMERA, STEER, CURVE, FOG, KEYS
+  main.js         fixed-1/60 loop, the full state machine, ALL wiring/scoring/collision
+  gearbox.js      pure gearAt(speed01) → {gear, rev}; shared by the engine synth AND the tachometer
+  juice.js        hitstop / slow-mo / camera-shake trauma model (all Comfort-Mode aware)
+  input.js        keyboard + touch + on-screen steer pads (+ clearSteer)
+  audio.js        procedural Web Audio: gearbox engine + SFX + heli rotor (one channel + toggle)
+  music.js        MP3 music bed (loop, mute, pause/resume)
+  scoring.js      score accumulator + localStorage hi-score
+  hud.js          DOM HUD, tach/gear, popups, pip meter, game-over panel + letter grade
+  ui.js           menu overlay manager (title/name/leaderboard/tutorial/paused) + lb render
+  leaderboard.js  leaderboard client (fetch/submit + offline cache + pending retry; jr3d.* keys)
+  comfort.js      Comfort Mode parameter sets
+  pwa.js          SW registration + install funnel (splash/button/banner) + landscape gate
   entities/
-    player.js      ramp/steer/fence sim; x = offset from centerline; exposes steerVis
-    traffic.js     ported (x,z) sim: spawnRow/gap-lane, no-collision AI, checkTrafficHit,
-                   smashCar, TRAFFIC_TYPES table, export SPAWN_ROW_GAP (base gap for density)
-    cops.js        helicopter sortie sim + barrels + checkBarrelHit (exports HELI_HOVER_AHEAD)
+    player.js     speed ramp, asymmetric steer ease, LATERAL MOMENTUM + slip, fences, weight transfer
+    traffic.js    ported (x,z) sim: spawnRow/gap-lane, no-collision AI, checkTrafficHit, smashCar,
+                  TRAFFIC_TYPES, coins (+ checkCoinGrab), SPAWN_ROW_GAP
+    cops.js       helicopter sortie sim + barrels + checkBarrelHit
   render3d/
-    scene.js       renderer, dusk sky shader, sun SPRITE (on layer 1 so it's excluded from the
-                   reflection cube cam), lights, FogExp2, env cube map; exposes follow(cam)
-    road.js        curveAt(z) centerline engine, worldPos(z,x,out), headingAt(z), dynamic road ribbon
-    camera.js      damped chase cam (exponential, locked horizon)
-    models.js      player supercar mesh + RAMPAGE aura; setSteer(a), setRampage(on,t)
-    vehicles.js    traffic 3D models + makeTrafficView (positions, brake/turn-signal lights)
-    cops3d.js      makeCopsView: helicopter + flaming barrel + reticle pools
-    scenery.js     palms + glowing reflector posts (thin out with speed)
-    environment.js sea plane + sand causeway ribbon + tunnel segment pool + ceiling-light pool
-    zones.js       zoneTypeAt(z): deterministic coast/tunnel cycling (3400-unit supersection)
-    effects.js     speed vignette + FOV kick + radial speed lines
-    postfx.js      EffectComposer: RenderPass → UnrealBloom → OutputPass (fx.render())
+    scene.js      renderer, dusk sky shader, sun SPRITE (layer 1 → excluded from the reflection cam),
+                  lights, FogExp2, env cube map; exposes follow(cam)
+    road.js       curveAt(z) centerline engine, worldPos(z,x,out), headingAt(z), dynamic road ribbon
+    camera.js     damped chase cam, locked horizon, speed-reactive dolly, snap() for fresh runs
+    models.js     player supercar mesh + RAMPAGE aura; setSteer(a), setRampage(on,t)
+    vehicles.js   traffic 3D models + makeTrafficView (brake/turn-signal lights)
+    coins.js      spinning gold coin pool on the racing line
+    cops3d.js     helicopter + flaming barrel + reticle pools
+    scenery.js    palms + glowing reflector posts (thin out with speed)
+    environment.js  sea plane + sand causeway + tunnel segment pool + ceiling lights
+    zones.js      zoneTypeAt(z): deterministic coast/tunnel cycling (3400-unit supersection)
+    effects.js    speed vignette + FOV kick + radial speed lines
+    postfx.js     EffectComposer: RenderPass → UnrealBloom → OutputPass (fx.render())
 ```
 
-### main.js loop (mental model)
-`frame()` = fixed-timestep accumulator → `step(dt)` (sim, only when `state===RACE`) → `render()`.
-`step`: updatePlayer → density scaling → updateTraffic (onPassed/onNearMiss scoring cbs) → rampage
-timer/shockwave → updateCops + heli sound → collisions (rampage plow / `takeHit` for traffic+barrel)
-→ combo decay → tickScore → setEngine. `render`: road.update → place/orient/bank car + setRampage →
-trafficView/copsView/scenery/environment update → `follow(camera)` + env follow → `hud.update(...)`
-→ `fx.render()`.
+### The loop (mental model)
+`frame()` → `juice.update(dt)` returns a **time scale** (0 during hitstop, <1 during slow-mo) →
+fixed-timestep accumulator → `step(dt)` → `render()`.
+
+`step` dispatches on state: `stepRace` (full sim) or `stepAttract` (the auto-driving backdrop behind
+the menus — no scoring, no collisions). `stepRace`: updatePlayer → density scaling + wave →
+updateTraffic (onPassed/onNearMiss callbacks) → rampage timer/shockwave → updateCops → collisions
+(rampage plow / `takeHit`) → coins → combo decay → tickScore → setEngine + upshift detection.
+
+`render`: road.update → place/orient/bank/pitch the car → traffic/coins/cops/scenery/environment →
+**shake offset → `follow(camera)` → `fx.render()` → shake restore** → `hud.update(...)`.
+
+**States:** `TITLE → NAME_ENTRY → (TUTORIAL) → RACE ↔ PAUSED → GAMEOVER`, plus `LEADERBOARD`
+(reachable from title and game-over). The 3D world keeps animating behind every menu.
 
 ---
 
-## 4. How to run & verify (IMPORTANT — read before testing)
+## 4. What's built
 
-**No build.** Serve the folder statically and open in a browser.
-
-- **LAN server (kept running in background):** `npx serve -l 8080 .`
-  - It **dies sometimes** — if `http://127.0.0.1:8080` is unreachable, just restart it
-    (`npx -y serve -l 8080 .` as a background process).
-  - Phone URL: `http://<LAN-IP>:8080` (LAN IP was `192.168.29.221`; re-check with
-    `Get-NetIPAddress -AddressFamily IPv4`).
-- **Syntax check before browser:** `node --check` every file under `src/` (catches typos fast).
-- **Visual verification = Claude-in-Chrome MCP** (the owner has a Chrome instance connected):
-  `list_connected_browsers` → `select_browser` → `tabs_context_mcp{createIfEmpty:true}` →
-  `navigate` to `http://localhost:8080/?fresh=N` (bump N to bust cache) → run JS to
-  `document.getElementById('install-no').click()` (dismiss install modal) → drive via
-  `window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft'}))` → `computer` `screenshot`.
-
-### Verification GOTCHAS (these wasted a lot of time — know them)
-- **Chrome tab backgrounding:** if the tab isn't the focused/visible tab, `document.hidden===true`
-  and **rAF pauses** → the game loop freezes (score/speed stuck, screenshot shows a default/stale
-  frame). Re-`navigate` to wake it, then screenshot quickly.
-- **The IDE Preview MCP pane keeps collapsing to 0–11px wide** → its screenshots hang. **Don't use
-  it.** Use Claude-in-Chrome on the 8080 server instead.
-- **Service worker serves stale code.** After editing, **bump `VERSION` in `sw.js`**, and in the
-  test tab clear it: unregister via `navigator.serviceWorker.getRegistrations()` + delete
-  `caches.keys()`, then reload. Also **keep `sw.js`'s precache `ASSETS` list in sync** when adding
-  files (or offline launch breaks).
-- **Triggering rare states for a screenshot:** add a temporary `window.__x = () => {...}` hook at the
-  end of `main.js`, verify, then **remove it** (this is how the rampage/helicopter visuals were
-  checked — e.g. force high speed + invincibility, set `player.z` to a coast value, hover the heli).
+- **Core:** curved endless road, damped chase cam, two-phase speed ramp, rubber-fence edges, fog,
+  speed vignette + FOV kick + speed lines, Comfort Mode.
+- **Driving feel:** asymmetric steer ease (gentle onset / snappy reversals), **lateral momentum +
+  slip → drift**, **6-speed gearbox**, weight transfer (squat/dive), speed-reactive camera dolly.
+- **Traffic:** row spawn with a guaranteed shifting gap lane, no-collision AI (gap-wait drift +
+  follow/brake), 14 vehicle types, brake + turn-signal lights, smash-aside on impact.
+- **Scoring & reward loop:** distance + pass + survival + **precision near-misses** (tighter = up to
+  ×1.6 + `PERFECT!`) + combo + **coins on the racing line** + **letter grades** (C/B/A/S).
+- **Rampage:** 10 combo near-misses fill a pip meter → ~7s invincible nitrous smash-through, exit
+  shockwave, 10-pass cooldown, aura + banner.
+- **Threats:** police helicopter (sortie AI, drops flaming barrels above 150 km/h, single→dual) +
+  compounding density scaling + a ±18% **density wave** (surge → breather → surge).
+- **Juice:** hitstop, slow-mo, camera shake, floating score/milestone popups, speed + combo callouts.
+- **Audio:** procedural gearbox engine, full SFX set, heli rotor, MP3 music bed, 🎵/🔊 toggles.
+- **Environments:** coastal causeway over the sea ↔ atmospheric tunnels, zone-cycled. Bloom.
+- **Shell:** title over a live attract scene, name entry, first-run tutorial, pause + auto-pause,
+  game-over panel with grade/stats/actions, online leaderboard.
+- **PWA:** manifest (landscape), service worker (network-first shell, `/api/` never cached),
+  install splash + persistent button + instructions banner, rotate-to-landscape gate.
 
 ---
 
 ## 5. Tuning quick-reference
 
-- **Everything numeric:** `src/config.js`. Camera = `CAMERA` (back 24 / height 11 / lookAhead 42 /
-  fov 66). Steering feel = `STEER`. Curve gentleness = `CURVE`. Fog = `FOG.density` (0.003).
-  Rampage = `RACE.rampage*`. Helicopter/density = `RACE.copTriggerKmh` (150) / `RACE.density*`.
-  Internal `PHYS.maxSpeed` (108) is the deliberate low road-scroll lever; km/h = `speed/maxSpeed*200`.
-- **Palette / lighting / sun:** `render3d/scene.js` (SKY_TOP/PINK/HOT colours, light intensities,
-  `toneMappingExposure` 1.22, `SUN_DIR`).
-- **Bloom:** `render3d/postfx.js` (strength 0.3, radius 0.5, **threshold 0.96** — high so paint
-  highlights don't bloom; only emissives/sun glow).
-- **Zone schedule:** `render3d/zones.js` `PATTERN` (coast 0–1500, tunnel 1500–2080, coast 2080–3400;
-  repeats every 3400). Tunnel geometry/lights tuned in `environment.js` (ARCH_X/Y, light pool).
+Everything numeric lives in **`src/config.js`**.
+
+| What | Where | Notes |
+|---|---|---|
+| **Drift / looseness** | `PHYS.grip` (10) | **lower = more slide**, higher = planted/on-rails |
+| Drift look | `STEER.driftYaw` (0.55) | how far the nose over-rotates vs the path |
+| Steering rate | `PHYS.steerSpeed` (112), `steerEase` (16) | ease is **×3.5 on release/reversal** — do NOT make this symmetric (§6) |
+| Lean / pitch | `STEER.bank` (0.16), `.pitch` (0.030) | bank is driven by **actual vx**, not input |
+| Speed | `PHYS.maxSpeed` (108) | the low road-scroll lever; km/h = `speed/maxSpeed*200` |
+| Gears | `src/gearbox.js` `BANDS`, `REV_FLOOR` (0.55) | floor sets the shift drop (~43%); 0.34 was far too much |
+| Camera | `CAMERA` back 24 / height 11 / `backAtSpeed` 7 / `dropAtSpeed` 2.6 | |
+| Rampage | `RACE.rampage*` | |
+| Difficulty | `RACE.density*`, `densityWaveAmp/Period`, `copTriggerKmh` (150) | |
+| Coins | `RACE.coinRowChance` (0.28), `coinsPerTrail` (3), `SCORE.coinValue` | spawn on the **open gap lane** |
+| Precision | `SCORE.precisionMax` (0.6), `precisionPx` (9) | |
+| Grades | `GRADES` | C/B/A/S thresholds |
+| Palette / sun | `render3d/scene.js` | `toneMappingExposure` 1.22, `SUN_DIR` |
+| Bloom | `render3d/postfx.js` | threshold **0.96** — high so only emissives/sun bloom |
+| Zone schedule | `render3d/zones.js` `PATTERN` | coast 0–1500, tunnel 1500–2080, coast → 3400, repeats |
 
 ---
 
-## 6. Phase 7 — BUILT. Remaining: deploy (owner accounts).
+## 6. How to run & verify
 
-The whole shell is built & verified (see §1). The code is deploy-ready; the **only** remaining work
-is the live hookup, which needs the **owner's** Vercel + Upstash accounts. The leaderboard fails
-**gracefully** until then (shows "OFFLINE — SHOWING CACHED"; runs are stashed and retried on a later
-load), so the game is fully playable offline right now.
+**No build.** Serve the folder statically:
 
-### How the leaderboard works (so you can debug it)
-- `api/leaderboard.js` is a zero-dep Vercel **serverless function** (`/api/leaderboard`). It reads
-  `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` (or the `KV_REST_API_*` aliases) from the
-  env. **No env → it returns 503** and the client shows "LEADERBOARD UNAVAILABLE". Keys are
-  namespaced `jr3d:lb:v1` (sorted set, best-per-name via `ZADD GT`) + `jr3d:lb:meta:v1` (hash).
-- `src/leaderboard.js` is the client (fetch/submit, 6 s timeout, localStorage cache + one-shot
-  pending retry, `jr3d.*` keys). `submitScore` is fire-and-forget from `endRun()`.
-- Locally (`npx serve`) there is **no** `/api`, so GET returns 404 → client goes offline-cached.
-  That's expected; it only works for real on Vercel.
+```bash
+npx -y serve -l 8099 .
+```
 
-### Deploy steps (owner does these; ~10 min)
-1. **Git + GitHub:** the folder is **not yet a git repo**. `git init`, commit, push to a **new**
-   GitHub repo (e.g. `joshua-racer-3d`). (Ask the owner before committing/pushing.)
-2. **Vercel project:** on vercel.com → *Add New… → Project* → import that repo. It's a static site +
-   `api/` function, **no build command** (framework preset: *Other*). `vercel.json` is already in place.
-3. **Upstash store:** in the Vercel project → *Storage* → *Create Database* → **Upstash Redis** (or
-   *Marketplace → Upstash*). Connecting it **auto-injects** `UPSTASH_REDIS_REST_URL/TOKEN` into the
-   project env. (Or create a DB at upstash.com and paste the two REST vars into Vercel → Settings →
-   Environment Variables.) **Redeploy** after connecting so the function sees the vars.
-4. **Verify:** open the Vercel URL → title → LEADERBOARD shows "NO SCORES YET — BE THE FIRST!"
-   (not "UNAVAILABLE"). Play a run; your score should appear. `GET /api/leaderboard` should return
-   `{"entries":[…]}`. Install prompt + offline launch should work (it's a PWA).
+**Two verification paths — pick by what you changed:**
+
+**A. Headless (fast, deterministic — prefer this for sim/logic).** `config.js`, `player.js`,
+`traffic.js`, `gearbox.js` and `scoring.js` are **pure logic with no DOM or Three.js**, so you can
+import them in plain node and assert on real numbers. This is how drift, gear shifts, weight
+transfer, coins, precision and the density wave were all verified — far faster than driving a
+browser, and it still works when browser tooling is unavailable:
+
+```js
+import { pathToFileURL } from "node:url";
+const imp = (p) => import(pathToFileURL("D:/Claude Code/Joshua Racer 3D/src/" + p).href);
+const { makePlayer, updatePlayer } = await imp("entities/player.js");
+// ...step the sim and assert on the numbers
+```
+
+**B. Browser (for anything visual).** Claude-in-Chrome MCP → `tabs_context_mcp{createIfEmpty:true}`
+→ `navigate` to `http://localhost:8099/?fresh=N` (bump N to bust cache) → `javascript_tool` to drive
+→ `computer` screenshot.
+
+**Always** `node --check` every changed file first — it catches typos in seconds.
+
+### Traps (hard-won — read before debugging)
+
+- **`localhost:8080` is hijacked.** Another local project ("Just A Scanner") has a service worker and
+  sometimes a server on :8080; it will serve *the wrong app* and waste a lot of time. **Use 8099.**
+- **`npx serve` dies silently.** If requests start failing, just restart it.
+- **A backgrounded Chrome tab pauses `rAF`** (`document.hidden === true`), so the loop freezes and
+  screenshots look stale or blank. Re-navigate to wake it, then screenshot quickly. To measure the
+  sim regardless, add a temporary `window.__jr3d = { tick, draw, ... }` hook — **and remove it after**.
+- **Service worker serves stale code.** Bump `VERSION` in `sw.js` **and** keep its `ASSETS` list in
+  sync when adding files (or offline launch breaks). To force-refresh a test tab: unregister via
+  `navigator.serviceWorker.getRegistrations()` + delete `caches.keys()`, then reload.
+- **A one-frame impulse gets smoothed away.** A crash's speed loss lasts a single frame; a symmetric
+  ease erases it entirely (the nose-dive silently never happened). `player.accel01` uses an
+  **asymmetric rate** (snap 40 down / recover 6 up). The same lesson applies to any impact response.
+- **Speed changes made *outside* `updatePlayer` are invisible** unless you compare against
+  `p.lastSpeed` (the previous frame's end), not `p.speed` at this frame's start — `applyCollisionLoss`
+  mutates speed externally on every crash.
+- **three.js: `+rotation.x` pitches the nose DOWN.** Squat under power is *negative*.
+- **Anchor `index.html` `<style>` edits precisely.** An over-broad "replace from X to `</style>`"
+  once deleted every menu-overlay rule and blanked the title screen.
+- **The "slanted car after crash" bug is fixed — don't re-diagnose it from scratch.** The dominant
+  cause was crashing *while holding the steer pad* (you crash *because* you were swerving), so the car
+  re-banked the instant control resumed. Fixed with `player.steerLock` (0.45s neutral-steer recovery
+  set in `takeHit`), plus per-`pointerId` window pointer-release in `input.js` and `chase.snap()` on a
+  fresh run. With no input held the car was always straight — it was never a stuck sim state.
+
+---
+
+## 7. Leaderboard (how it works + how to bring it back)
+
+- **`api/leaderboard.js`** — zero-dep Vercel serverless function at `/api/leaderboard`. Reads
+  `UPSTASH_REDIS_REST_URL`/`_TOKEN` (or the `KV_REST_API_*` aliases). Keys: `jr3d:lb:v1` (sorted set,
+  best-per-name via `ZADD GT`) + `jr3d:lb:meta:v1` (hash). Light per-IP rate limit. `GET` → top 20,
+  `POST` → submit + refreshed board.
+- **`src/leaderboard.js`** — client: 6s timeout, localStorage cache, one-shot pending-submit retry.
+  `submitScore` is fire-and-forget from `endRun()`.
+- **Status codes tell you the fault:** `503` = env vars missing → "LEADERBOARD UNAVAILABLE".
+  `502` = the function ran but Redis failed → check the Vercel **runtime logs**, which now log the
+  cause (`redis 401` = bad token; **`fetch failed` = host unreachable / DB gone**).
+- **Locally there is no `/api`**, so GET 404s and the client falls back to cached/offline. Expected.
+
+**To restore it:** create a free DB at upstash.com (Regional, e.g. Mumbai) → copy the **REST**
+`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (leave "Read-Only Token" unticked — the game
+writes) → Vercel → `joshua-racer-3d` → Settings → Environment Variables (Production) → **Redeploy**.
+Verify: `GET https://joshua-racer-3d.vercel.app/api/leaderboard` returns `{"entries":[...]}`.
+
+---
+
+## 8. Deploy
+
+Both CLIs are installed and authenticated (`gh` as `shadow07-code`, `vercel` as `antonysajan-9019`).
+
+```bash
+git add -A && git commit -m "..." && git push origin main
+vercel deploy --prod --yes
+```
+
+Vercel serves this as a **static site + `api/` function, with no build command**. Always bump the
+`sw.js` `VERSION` first, then confirm the live worker after deploying:
+
+```bash
+curl -s https://joshua-racer-3d.vercel.app/sw.js | grep VERSION
+```
 
 **Definition of done (from the brief):** a deployed PWA on a Vercel URL that plays like Joshua 1
-Racer, installable + offline-capable, with the online leaderboard live. ← only step 4 left to confirm.
-
----
-
-## 7. Useful commands
-
-```powershell
-# syntax-check all modules
-Get-ChildItem src -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }
-
-# (re)start the LAN server in the background
-npx -y serve -l 8080 .
-
-# find LAN IP for phone testing
-Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.PrefixOrigin -eq 'Dhcp' }
-```
-SW is at **v16** — bump it on the next code change (and keep `sw.js`'s `ASSETS` list + `/api/` bypass in sync).
-
-> ⚠️ **localhost:8080 gotcha:** another local project ("Just A Scanner") has a **service worker** +
-> sometimes a server bound to **:8080**, which can hijack navigations and serve the wrong app. If you
-> see the wrong title, unregister SWs + clear caches for the origin, or just **serve on a different
-> port** (e.g. `npx serve -l 8099 .`). The Vercel deploy is a separate origin and unaffected.
+Racer, installable + offline-capable, with the online leaderboard live. ← all met except the
+leaderboard, which is blocked on §1 item 1.
