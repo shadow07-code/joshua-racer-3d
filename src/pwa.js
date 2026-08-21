@@ -1,41 +1,58 @@
-// PWA: service-worker registration, a heavy install funnel, and landscape-only
-// enforcement.
+// PWA: service-worker registration, the install funnel, and landscape-only
+// enforcement. The funnel mirrors the original Joshua 1 Racer's, which is the
+// shape that actually converts:
 //
-// Reality check on "automatic" install: browsers do NOT allow silent installs.
-// On Android/Chromium, tapping "Install" fires the OS's own install dialog (one
-// confirm). On iOS Safari there is NO install API at all — we can only show the
-// "Share → Add to Home Screen" steps. So this is the strongest funnel the
-// platforms permit. "No" lets you keep playing in the browser (still landscape).
+//   1. A first-load SPLASH over the live title — shown ONCE per browser (not on
+//      every visit, which is nagging), never in the installed app.
+//   2. A PERSISTENT, gently pulsing "ADD TO HOME SCREEN" button on the title
+//      screen, so the offer is always one tap away after the splash is gone.
+//   3. A manual-instructions BANNER for the cases with no native prompt (iOS
+//      Safari has no install API at all; Android sometimes withholds the prompt
+//      until its engagement heuristic fires). Without this the button is a dead
+//      end on exactly the platforms that need help most.
+//
+// Reality check: browsers never allow a silent install — the OS always shows its
+// own confirm. This is the strongest funnel the platforms permit.
 const INSTALLED_KEY = "jr3d.installed";
+const SPLASH_SEEN_KEY = "jr3d.installSplashSeen";
 
-let stashedPrompt = null;
-let modal, titleEl, msgEl, yesBtn, noBtn, gate;
+let stashedPrompt = null;             // captured beforeinstallprompt event
+let _installedThisSession = false;
+let _splash, _splashInstall, _splashBrowser;
+let _banner, _bannerMsg, _bannerYes, _bannerNo;
+let _installBtn, _gate;
 
 export function initPwa() {
   registerServiceWorker();
 
-  modal = document.getElementById("install-modal");
-  titleEl = document.getElementById("install-title");
-  msgEl = document.getElementById("install-msg");
-  yesBtn = document.getElementById("install-yes");
-  noBtn = document.getElementById("install-no");
-  gate = document.getElementById("rotate-gate");
+  _splash = document.getElementById("install-splash");
+  _splashInstall = document.getElementById("splash-install");
+  _splashBrowser = document.getElementById("splash-browser");
+  _banner = document.getElementById("install-banner");
+  _bannerMsg = document.getElementById("install-msg");
+  _bannerYes = document.getElementById("install-yes");
+  _bannerNo = document.getElementById("install-no");
+  _installBtn = document.getElementById("btn-install");
+  _gate = document.getElementById("rotate-gate");
 
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    stashedPrompt = e;
-    // If the modal is already up with a fallback message, upgrade the CTA.
-    if (modal && modal.classList.contains("show") && !isIos()) yesBtn.textContent = "INSTALL";
-  });
+  // Capture the Android/Chromium prompt so our own buttons can fire it later.
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); stashedPrompt = e; });
+
   window.addEventListener("appinstalled", () => {
+    _installedThisSession = true;
     try { localStorage.setItem(INSTALLED_KEY, "1"); } catch {}
     stashedPrompt = null;
-    hideModal();
+    hideBanner();
+    hideSplash();
+    setInstallButtonVisible(false);
     tryLockLandscape();
   });
 
-  if (yesBtn) yesBtn.addEventListener("click", onYes);
-  if (noBtn) noBtn.addEventListener("click", hideModal);
+  if (_splashInstall) _splashInstall.addEventListener("click", (e) => { e.stopPropagation(); doInstall(); });
+  if (_splashBrowser) _splashBrowser.addEventListener("click", (e) => { e.stopPropagation(); dismissSplash(); });
+  if (_installBtn) _installBtn.addEventListener("click", (e) => { e.stopPropagation(); doInstall(); });
+  if (_bannerYes) _bannerYes.addEventListener("click", (e) => { e.stopPropagation(); hideBanner(); });
+  if (_bannerNo) _bannerNo.addEventListener("click", (e) => { e.stopPropagation(); hideBanner(); });
 
   // Landscape-only enforcement.
   const onOrient = () => updateOrientation();
@@ -43,16 +60,71 @@ export function initPwa() {
   window.addEventListener("orientationchange", onOrient);
   updateOrientation();
 
-  // Attempt an orientation lock on the first gesture (works in installed/
+  // Attempt an orientation lock on the first gesture (works in installed /
   // fullscreen contexts; harmlessly rejected elsewhere, e.g. iOS).
-  const lockOnce = () => { tryLockLandscape(); window.removeEventListener("pointerdown", lockOnce); };
-  window.addEventListener("pointerdown", lockOnce, { once: true });
+  window.addEventListener("pointerdown", function lockOnce() {
+    tryLockLandscape();
+    window.removeEventListener("pointerdown", lockOnce);
+  }, { once: true });
 
-  // Heavy install prompt on load (unless already installed).
-  if (!isInstalled()) showInstallModal();
-  else tryLockLandscape();
+  // First-load splash — once per browser, and never in the installed app.
+  let seen = false;
+  try { seen = localStorage.getItem(SPLASH_SEEN_KEY) === "1"; } catch {}
+  if (shouldOfferInstall() && !seen && _splash) _splash.classList.add("show");
+  else if (!shouldOfferInstall()) tryLockLandscape();
 }
 
+// Offer the install whenever we are NOT already running as the installed app and
+// the user hasn't installed during this session. Deliberately NOT gated on the
+// sticky INSTALLED_KEY: that flag survives an uninstall and would hide the CTA
+// forever on a device where the app isn't actually installed any more.
+function shouldOfferInstall() { return !isStandalone() && !_installedThisSession; }
+
+// Fire the native prompt if we have it; otherwise fall back to real instructions.
+// Either way the splash is dismissed so the title screen is reachable.
+async function doInstall() {
+  if (stashedPrompt) {
+    stashedPrompt.prompt();
+    try { await stashedPrompt.userChoice; } catch {}
+    stashedPrompt = null;
+    hideBanner();
+    dismissSplash();
+    tryLockLandscape();
+  } else {
+    // No native prompt (iOS always; Android until its heuristic fires). Drop the
+    // splash first so the banner underneath is actually visible.
+    dismissSplash();
+    showBanner(isIos());
+  }
+}
+
+// ── Splash ──
+function dismissSplash() {
+  try { localStorage.setItem(SPLASH_SEEN_KEY, "1"); } catch {}
+  hideSplash();
+}
+function hideSplash() { if (_splash) _splash.classList.remove("show"); }
+
+// ── Instruction banner ──
+function showBanner(ios) {
+  if (!_banner) return;
+  if (_bannerMsg) {
+    _bannerMsg.innerHTML = ios
+      ? "Tap <b>Share&nbsp;⬆</b> then <b>“Add to Home Screen”</b>"
+      : "Open the browser menu <b>⋮</b> → <b>“Install app”</b> / <b>“Add to Home screen”</b>";
+  }
+  _banner.classList.add("show");
+}
+function hideBanner() { if (_banner) _banner.classList.remove("show"); }
+
+// ── Persistent title-screen button ──
+// main.js calls this on every state change; it self-suppresses once installed.
+export function setInstallButtonVisible(show) {
+  if (!_installBtn) return;
+  _installBtn.classList.toggle("show", !!show && shouldOfferInstall());
+}
+
+// ── Service worker ──
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   const hadController = !!navigator.serviceWorker.controller;
@@ -70,50 +142,14 @@ function registerServiceWorker() {
   });
 }
 
-// ── Install modal ──
-function showInstallModal() {
-  if (!modal) return;
-  if (isIos()) {
-    titleEl.textContent = "INSTALL THE GAME";
-    msgEl.innerHTML = "Best played installed in fullscreen landscape.<br>Tap <b>Share ⬆</b> then <b>“Add to Home Screen”</b>.";
-    yesBtn.textContent = "GOT IT";
-    noBtn.textContent = "Play in browser";
-  } else {
-    titleEl.textContent = "INSTALL THE GAME";
-    msgEl.innerHTML = "Install Joshua Racer 3D for fullscreen, landscape play — like a real app.";
-    yesBtn.textContent = stashedPrompt ? "INSTALL" : "INSTALL";
-    noBtn.textContent = "Play in browser";
-  }
-  modal.classList.add("show");
-}
-
-function hideModal() { if (modal) modal.classList.remove("show"); }
-
-async function onYes() {
-  if (stashedPrompt) {
-    stashedPrompt.prompt();
-    try { await stashedPrompt.userChoice; } catch {}
-    stashedPrompt = null;
-    hideModal();
-    tryLockLandscape();
-  } else {
-    // iOS / no native prompt — the on-screen instructions are the action.
-    hideModal();
-  }
-}
-
 // ── Landscape-only ──
 function updateOrientation() {
-  if (!gate) return;
-  const portrait = window.innerHeight > window.innerWidth;
-  gate.classList.toggle("show", portrait);
+  if (!_gate) return;
+  _gate.classList.toggle("show", window.innerHeight > window.innerWidth);
 }
-
 function tryLockLandscape() {
   try {
-    if (screen.orientation && screen.orientation.lock) {
-      screen.orientation.lock("landscape").catch(() => {});
-    }
+    if (screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(() => {});
   } catch {}
 }
 
@@ -126,8 +162,4 @@ function isStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches ||
          window.matchMedia("(display-mode: fullscreen)").matches ||
          window.navigator.standalone === true;
-}
-function isInstalled() {
-  try { return isStandalone() || localStorage.getItem(INSTALLED_KEY) === "1"; }
-  catch { return isStandalone(); }
 }

@@ -106,6 +106,23 @@ The game is a **complete, playable arcade loop** with sound. Built & verified:
   SW → **v15**. Verified headlessly (real sim modules in node): drift, shift drops, squat/dive,
   crash-lockout regression, plus the full Phase 9 suite still green.
 
+- **Phase 11 — install funnel, rebuilt in the original's style (DONE):** the heavy "INSTALL THE
+  GAME — Yes/No" modal fired on **every** load and dead-ended when no native prompt existed. Replaced
+  with the 2D game's proven three-part funnel (`src/pwa.js` rewritten):
+  1. **First-load SPLASH shown ONCE** per browser (`jr3d.installSplashSeen`), translucent over the
+     live attract scene: "🏁 JOSHUA RACER 3D" + a glowing **📲 INSTALL APP** and a soft
+     *"play in browser instead (not recommended)"*. Never shown in the installed app.
+  2. **PERSISTENT `#btn-install`** ("📲 ADD TO HOME SCREEN") in the title button stack with a
+     breathing halo (`@keyframes installGlow`), so the offer is always one tap away after the splash.
+     `setInstallButtonVisible()` is exported and called from `main.js` `syncOverlays()` — visible on
+     **TITLE only**, and self-suppressing via `shouldOfferInstall()`.
+  3. **Instructions BANNER** (`#install-banner`) for platforms with no native prompt — iOS Safari
+     (no install API at all) and Android before its engagement heuristic fires. The old modal just
+     closed in that case, which was a dead end on exactly the platforms needing help.
+  `shouldOfferInstall()` = `!isStandalone() && !installedThisSession` — deliberately **not** gated on
+  the sticky `jr3d.installed` key (it survives an uninstall and would hide the CTA forever).
+  SW → **v16**. Verified in Chrome: splash → dismiss → persistent button → banner → state-gating.
+
 ### What's LEFT (priority order)
 1. ~~Connect Upstash~~ **DONE — the online leaderboard is LIVE.** Upstash Redis (Free tier, Mumbai)
    is connected to the Vercel project; verified end-to-end: `GET /api/leaderboard` → `200 {"entries":[…]}`
@@ -290,7 +307,7 @@ npx -y serve -l 8080 .
 # find LAN IP for phone testing
 Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.PrefixOrigin -eq 'Dhcp' }
 ```
-SW is at **v15** — bump it on the next code change (and keep `sw.js`'s `ASSETS` list + `/api/` bypass in sync).
+SW is at **v16** — bump it on the next code change (and keep `sw.js`'s `ASSETS` list + `/api/` bypass in sync).
 
 > ⚠️ **localhost:8080 gotcha:** another local project ("Just A Scanner") has a **service worker** +
 > sometimes a server bound to **:8080**, which can hijack navigations and serve the wrong app. If you

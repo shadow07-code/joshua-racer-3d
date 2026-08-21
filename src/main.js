@@ -8,7 +8,7 @@ import { initInput, getInput, consumePress, clearSteer } from "./input.js";
 import * as juice from "./juice.js";
 import { toggleComfort, isComfort } from "./comfort.js";
 import { initMusic, startOnce, toggleMute, isMuted, pauseMusic, resumeMusic } from "./music.js";
-import { initPwa } from "./pwa.js";
+import { initPwa, setInstallButtonVisible } from "./pwa.js";
 import {
   initAudio, resumeAudio, suspendAudio, startEngine, stopEngine, setEngine, setEngineRampage,
   sfxNearMiss, sfxCombo, sfxBump, sfxCrash, sfxRampage, sfxShockwave, sfxBarrelDrop, sfxGameOver, sfxCoin, sfxShift,
@@ -102,6 +102,7 @@ const goPanel = document.getElementById("gameover");
 // ── Overlay visibility, driven by state ──
 function syncOverlays() {
   ui.showTitle(state === STATE.TITLE);
+  setInstallButtonVisible(state === STATE.TITLE);   // persistent home-screen CTA
   ui.showNameEntry(state === STATE.NAME_ENTRY);
   ui.showLeaderboardPanel(state === STATE.LEADERBOARD);
   ui.showTutorial(state === STATE.TUTORIAL);
