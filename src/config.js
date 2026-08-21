@@ -164,3 +164,60 @@ export const KEYS = {
   pause: ["p", "P", " "],
   enter: ["Enter", " "],
 };
+
+// ── Deeper-fun systems (oncoming lane, nitro, jumps, nightfall) ───────────────
+
+// OPPOSING TRAFFIC. The outermost lane carries cars coming the OTHER way, so the
+// road stops being a uniform field of overtakes: one lane is now genuinely lethal
+// but pays out roughly double on a shave, which is what makes lane choice a
+// decision instead of a habit. Painted on the road as a double-yellow from the
+// first frame (see render3d/road.js) so the rule is legible before it bites.
+export const ONCOMING = {
+  lane: 0,                 // leftmost lane (screen-left) is the opposing carriageway
+  startSeconds: 34,        // race time at which the opposing lane goes live
+  gap: 380,                // base world-space spacing between opposing cars
+  gapJitter: 180,
+  spawnAhead: 620,         // born this far out — beyond the fog, so they fade IN
+  cullAhead: 340,          // no 3D mesh built until a car is this close
+  speedMul: 0.34,          // fraction of cruise speed, travelling -z
+  nearMissMul: 2.4,        // head-on shaves pay far more than an overtake
+  hitSeverity: 0.75,       // ... and a head-on costs far more speed than a rear-end
+};
+
+// NITRO CANISTERS. A short overspeed burst (player.boost already drives the
+// speed cap), placed 70% of the time in the opposing lane once it's live — so
+// the reward for reading the oncoming rhythm is the thing that makes you faster.
+export const NITRO = {
+  seconds: 2.6,            // boost granted per canister
+  maxStock: 6,             // seconds of banked boost the car can hold
+  chance: 0.10,            // per spawned row (≈ one every 9s at base density)
+  riskyLaneChance: 0.7,    // how often it sits in the opposing lane (once live)
+  value: 120,              // score for grabbing one
+};
+
+// RAMPS. Sparse kickers on the shoulder-side lanes that launch the car into a
+// real arc. Airborne = no traffic collisions (the car is above them), so a ramp
+// is both a spectacle and a deliberate escape hatch from a bad row.
+export const JUMP = {
+  startSeconds: 20,        // ramps start appearing after the opening
+  chance: 0.13,            // per spawned row
+  minGapZ: 620,            // never two ramps closer than this
+  takeoffVy: 34,           // launch velocity (world units/s) — ~1.6s of air
+  gravity: 46,             // downward accel while airborne
+  airSteer: 0.35,          // steering authority with the wheels off the road
+  rampLen: 34,             // ramp footprint along z
+  rampRise: 4.6,           // ramp height at the lip
+  airScorePerSec: 260,     // score per second of air
+  landShake: 0.34,
+};
+
+// NIGHTFALL. A one-way dusk → night grade over the run: the world darkens,
+// headlights and neon take over, and a long run visibly earns its own atmosphere.
+// Deliberately NOT looping — the escalation reads as progress. Menus stay at
+// dusk (nightT only advances while racing), preserving the warm title shot.
+export const NIGHT = {
+  fallSeconds: 95,         // race seconds from full dusk to full night
+  startAfter: 12,          // ... after this much grace at dusk
+  exposureDusk: 1.22,
+  exposureNight: 0.74,
+};

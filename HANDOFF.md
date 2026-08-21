@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v16` — **bump on every code change** |
+| **Service worker** | `jr3d-v17` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -28,15 +28,22 @@ memory dir (`joshua-racer-3d-direction.md`, `joshua-racer-3d-architecture.md`).
    new free DB at upstash.com, then update `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` in
    Vercel → Settings → Environment Variables → **Redeploy**. Details in §7. *The game degrades
    gracefully meanwhile ("OFFLINE — SHOWING CACHED") and pending scores retry on a later load.*
-2. **Oil slicks** — the last missing Phase 5 piece. The reference `entities/oilspills.js` is dead
-   code (depends on removed `RACE.totalLaps`/`lapLength`) → must be re-implemented for endless mode:
-   spawn oil decals ahead periodically, `checkOilHit`, on hit set a brief slip (speed drop + steering
-   wobble via `player.oilTimer`). **No life cost, no combo break.**
-3. **Bridge environment** — add a `"bridge"` zone to `render3d/zones.js` + suspension towers/railings
-   over the sea in `environment.js` (mirror the tunnel segment-pool pattern).
-4. **Deeper fun roadmap** (ranked, not yet built): **oncoming-traffic lane** (higher closing speed =
-   bigger near-miss payoff), **nitro pickups** (a reason to pick a lane), **ramps / jumps**,
-   **dusk→night cycle** with headlights and neon.
+2. **Oil slicks: DROPPED — do not build them.** The owner cancelled this outright on 2026-08-21.
+   It is not backlog, it is a decision. (The 2D reference no longer contains `entities/oilspills.js`
+   at all, so there was never anything to port either.)
+3. **Bridge environment: DONE** (2026-08-21) — see §4.
+4. **Deeper fun roadmap: DONE** (2026-08-21) — opposing lane, nitro, ramps and nightfall are all
+   built and verified. See §4/§5.
+5. **Not started, in rough priority order:**
+   - **A balance pass once the owner has actually played it.** The new systems were tuned against
+     headless numbers (encounter rates, air time, spawn cadence), not feel. The likely dials are
+     `ONCOMING.startSeconds`/`gap`, `NITRO.chance` and `JUMP.chance` — all in `config.js`.
+   - **The sea barely reads as water.** At dusk it fogs to almost exactly the sky colour, so the
+     causeway and the bridge both look like they cross a void. A slow scrolling normal map (or even
+     a horizon-line contrast tweak) would sell "over water" for very little work.
+   - **More zone types.** `render3d/zones.js` is now a 5-entry table and the segment-pool pattern is
+     proven three times over (tunnel, bridge deck, ramps) — a city or mountain-pass zone is mostly
+     a cross-section array and a pool.
 
 ---
 
@@ -49,6 +56,13 @@ memory dir (`joshua-racer-3d-direction.md`, `joshua-racer-3d-architecture.md`).
 - **Player car:** **road supercar** (McLaren-F1-ish), not the brief's open-wheel F1. Red, with "J".
 - **Road:** gentle sweeping curves, not straight.
 - **Landscape-only.**
+- **Nightfall is one-way, and menus never leave dusk.** `nightT` climbs 0→1 over ~95 race seconds
+  and then holds; it is reset to 0 by `resetWorld()` and only advances inside `stepRace`, so the
+  title/name/leaderboard attract scene keeps the art-directed warm-dusk hero shot. A looping
+  day/night cycle was rejected — the one-way grade reads as *escalation*, matching how every other
+  system in the game (density, cops, opposing traffic) ramps.
+- **Neon stays warm.** Billboards and tower strips are amber/sand with one cool teal. The
+  no-synthwave rule above still applies at night — no magenta, no grids.
 - **Install funnel:** mimic the **original Joshua Racer's** — a splash shown **once**, a
   **persistent** home-screen button, and real instructions where there's no native prompt.
   (This *superseded* an earlier "heavy modal on every load" direction — nagging is out.)
@@ -102,10 +116,12 @@ src/
     models.js     player supercar mesh + RAMPAGE aura; setSteer(a), setRampage(on,t)
     vehicles.js   traffic 3D models + makeTrafficView (brake/turn-signal lights)
     coins.js      spinning gold coin pool on the racing line
+    nitro.js      glowing aqua nitro canister pool (cool, so it never reads as a coin)
+    ramps.js      hazard-striped launch wedges (pooled ribbons off the centerline)
     cops3d.js     helicopter + flaming barrel + reticle pools
-    scenery.js    palms + glowing reflector posts (thin out with speed)
-    environment.js  sea plane + sand causeway + tunnel segment pool + ceiling lights
-    zones.js      zoneTypeAt(z): deterministic coast/tunnel cycling (3400-unit supersection)
+    scenery.js    palms + reflector posts + NEON BILLBOARDS (night-only, coast-only)
+    environment.js  sea + sand causeway + tunnel pool + BRIDGE (deck/towers/cables) + setNight
+    zones.js      zoneTypeAt(z) + zoneBlend(z,type): coast/tunnel/bridge (4200-unit supersection)
     effects.js    speed vignette + FOV kick + radial speed lines
     postfx.js     EffectComposer: RenderPass → UnrealBloom → OutputPass (fx.render())
 ```
@@ -143,7 +159,22 @@ updateTraffic (onPassed/onNearMiss callbacks) → rampage timer/shockwave → up
   compounding density scaling + a ±18% **density wave** (surge → breather → surge).
 - **Juice:** hitstop, slow-mo, camera shake, floating score/milestone popups, speed + combo callouts.
 - **Audio:** procedural gearbox engine, full SFX set, heli rotor, MP3 music bed, 🎵/🔊 toggles.
-- **Environments:** coastal causeway over the sea ↔ atmospheric tunnels, zone-cycled. Bloom.
+- **Environments:** coastal causeway ↔ tunnels ↔ a **suspension BRIDGE** (deck + parapets, pylon
+  towers with neon strips, parabolic main cables with hangers), zone-cycled. Bloom. The causeway
+  *sinks* under the sea plane at a bridge mouth rather than narrowing, so the transition reads as a
+  beach running out into the water.
+- **Opposing carriageway:** the outermost lane goes two-way ~34s in (announced with a klaxon +
+  banner). Painted as a double-yellow from frame one so the rule is legible before it bites. Head-on
+  shaves pay ×2.4 and a head-on crash costs more speed. The gap lane can never be that lane, and any
+  car caught in it when the lane opens pulls over.
+- **Nitro canisters:** bank up to 6s of overspeed (the speedo genuinely reads past 200 km/h and turns
+  cyan). 70% of them sit in the opposing lane once it is live — the risk *is* the reward.
+- **Ramps / jumps:** hazard-striped wedges on the open weaving line launch a ~1.6s, 17-unit-high arc
+  covering ~175 units (about two traffic rows). Airborne = no traffic or barrel collisions, reduced
+  steering authority, air time paid out on landing. The shadow and headlight pool stay on the road.
+- **Nightfall:** a one-way dusk→night grade over ~95s — sky, fog, every light and the renderer
+  exposure. Headlights + beams + a ground pool + car underglow come up, traffic lamps brighten,
+  opposing cars run hotter still, tunnel strips and tower neon blaze, roadside neon billboards light.
 - **Shell:** title over a live attract scene, name entry, first-run tutorial, pause + auto-pause,
   game-over panel with grade/stats/actions, online leaderboard.
 - **PWA:** manifest (landscape), service worker (network-first shell, `/api/` never cached),
@@ -171,7 +202,12 @@ Everything numeric lives in **`src/config.js`**.
 | Grades | `GRADES` | C/B/A/S thresholds |
 | Palette / sun | `render3d/scene.js` | `toneMappingExposure` 1.22, `SUN_DIR` |
 | Bloom | `render3d/postfx.js` | threshold **0.96** — high so only emissives/sun bloom |
-| Zone schedule | `render3d/zones.js` `PATTERN` | coast 0–1500, tunnel 1500–2080, coast → 3400, repeats |
+| **Opposing lane** | `ONCOMING` | `startSeconds` 34, `gap` 380 (≈1 car every 4.3s), `nearMissMul` 2.4, `hitSeverity` 0.75. `lane` 0 is assumed by the road texture's double-yellow — changing it repaints correctly, but re-check `WITH_FLOW_MIN_X` in traffic.js |
+| **Nitro** | `NITRO` | `seconds` 2.6, `maxStock` 6, `chance` 0.10/row (≈every 11s), `riskyLaneChance` 0.7 |
+| **Ramps** | `JUMP` | `takeoffVy` 34 + `gravity` 46 → ~1.6s air, ~17u peak, ~175u covered. `minGapZ` 620 floors the spacing at ~1 per 1300u |
+| **Nightfall** | `NIGHT` | `startAfter` 12s grace, then 0→1 over `fallSeconds` 95. Exposure 1.22→0.74 is the only lever that also dims the baked reflection cube map |
+| Zone schedule | `render3d/zones.js` `PATTERN` | 4200-unit supersection: coast 0–1400, tunnel →1980, coast →2760, **bridge →3560**, coast →4200 |
+| Bridge geometry | `render3d/environment.js` | `SEA_Y` −8.5 (lowered so the deck has air under it), `TOWER_SPACING` 190, `TOWER_H` 48, `CABLE_SAG` 33 |
 
 ---
 
@@ -202,7 +238,16 @@ const { makePlayer, updatePlayer } = await imp("entities/player.js");
 → `navigate` to `http://localhost:8099/?fresh=N` (bump N to bust cache) → `javascript_tool` to drive
 → `computer` screenshot.
 
-**Always** `node --check` every changed file first — it catches typos in seconds.
+**Always** `node --check` every changed file first — it catches typos in seconds. The headless path
+now also covers the opposing lane, nitro, ramps and the jump arc — see the pattern in §6A below.
+
+**§6A. `node tools/simtest.mjs`** — the checked-in headless suite. What it asserts (extend it when
+you touch the sim; it
+caught a real fairness bug where cars stranded in the opposing lane would have been driven through
+head-on): jump air time/height/distance; air-steering authority ratio; opposing cars stay in their
+lane and same-direction cars never enter it; encounter cadence; the guaranteed gap lane is never the
+opposing lane; pickup/ramp spawn rates; that airborne disables traffic hits, coins and nitro; and
+that a ramp triggers exactly once and only in its own lane.
 
 ### Traps (hard-won — read before debugging)
 
@@ -224,6 +269,14 @@ const { makePlayer, updatePlayer } = await imp("entities/player.js");
 - **three.js: `+rotation.x` pitches the nose DOWN.** Squat under power is *negative*.
 - **Anchor `index.html` `<style>` edits precisely.** An over-broad "replace from X to `</style>`"
   once deleted every menu-overlay rule and blanked the title screen.
+- **`road.reset()` must be called on every fresh run — and it now is.** `prune()` only ever moves
+  the centerline's `baseI` FORWARD, so after ~570 units the samples for small `z` are gone. A restart
+  puts the player back at `z = 0`, where `centerlineAt` clamped to `baseI` and then *extrapolated*
+  thousands of steps backwards: positions stayed on a straight line but the **heading ran away**
+  (measured 3.017 rad — the car facing backwards), so the car and the whole road loaded skewed. This
+  was a long-standing bug, not a new one; `resetWorld()` now calls `road.reset()` first. If you ever
+  teleport `player.z` (a debug hook, a level skip), you must warm the centerline out past the target
+  first or you will hit the same thing as NaN-filled geometry and a black screen.
 - **The "slanted car after crash" bug is fixed — don't re-diagnose it from scratch.** The dominant
   cause was crashing *while holding the steer pad* (you crash *because* you were swerving), so the car
   re-banked the instant control resumed. Fixed with `player.steerLock` (0.45s neutral-steer recovery

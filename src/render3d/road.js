@@ -10,7 +10,7 @@
 // curves without ever popping. Lane markings + rumble strips come from a tiled
 // canvas texture (UV.v = world distance), so dashes flow toward the player.
 import * as THREE from "three";
-import { CURVE, ROAD, WORLD } from "../config.js";
+import { CURVE, ROAD, WORLD, ONCOMING } from "../config.js";
 
 const STEP = CURVE.step;                       // centerline sample spacing
 const TOTAL_HALF = ROAD.halfWidth + ROAD.shoulder;
@@ -79,6 +79,20 @@ export function makeRoad(scene) {
     }
   }
 
+  // Throw the centerline away and start it again at the origin.
+  //
+  // prune() only ever moves baseI FORWARD, so once a run has covered ~570 units
+  // the samples for small z are gone for good. A fresh run puts the player back
+  // at z = 0, where centerlineAt() would clamp to baseI and then extrapolate
+  // thousands of steps backwards — positions stayed on a straight line but the
+  // heading ran away, which is what made the car and the whole road load skewed
+  // on a restart. Every fresh run must therefore reset this too.
+  function reset() {
+    baseI = 0; topI = 0;
+    xs.length = 0; zs.length = 0; ths.length = 0;
+    xs.push(0); zs.push(0); ths.push(0);
+  }
+
   // ── Ribbon mesh ──
   const positions = new Float32Array(RINGS * 2 * 3);
   const uvs = new Float32Array(RINGS * 2 * 2);
@@ -122,7 +136,7 @@ export function makeRoad(scene) {
     uvAttr.needsUpdate = true;
   }
 
-  return { mesh, update, worldPos, headingAt, centerlineAt };
+  return { mesh, update, reset, worldPos, headingAt, centerlineAt };
 }
 
 // Cross-section texture (u across the full width incl. shoulders, v along road).
@@ -142,6 +156,14 @@ function makeRoadTexture() {
   // Asphalt.
   g.fillStyle = "#3a3d44"; g.fillRect(px(uRoadL), 0, px(uRoadR) - px(uRoadL), H);
 
+  // The OPPOSING carriageway gets slightly older, darker tarmac. Painted from
+  // the first frame — long before opposing traffic actually goes live — so the
+  // rule of that lane is legible before it ever bites.
+  const roadSpan = uRoadR - uRoadL;
+  const oncU0 = uRoadL + roadSpan * (ONCOMING.lane / ROAD.laneCount);
+  const oncU1 = uRoadL + roadSpan * ((ONCOMING.lane + 1) / ROAD.laneCount);
+  g.fillStyle = "#33363c"; g.fillRect(px(oncU0), 0, px(oncU1) - px(oncU0), H);
+
   // Rumble strips just inside each shoulder (red/white along v).
   const rumbleW = Math.max(3, Math.round(0.012 * W));
   for (let y = 0; y < H; y += 16) {
@@ -154,12 +176,19 @@ function makeRoadTexture() {
   g.fillRect(px(uRoadL) + rumbleW, 0, 2, H);
   g.fillRect(px(uRoadR) - rumbleW - 2, 0, 2, H);
 
-  // Dashed lane separators (4 internal lines for 5 lanes).
+  // Dashed lane separators (4 internal lines for 5 lanes) — except the boundary
+  // against the opposing carriageway, which gets the real-world double yellow.
   const roadFrac = uRoadR - uRoadL;
-  g.fillStyle = "#f4f4f4";
+  const oncEdge = ONCOMING.lane === 0 ? 1 : ONCOMING.lane;
   for (let k = 1; k < ROAD.laneCount; k++) {
-    const u = uRoadL + roadFrac * (k / ROAD.laneCount);
-    const x = px(u);
+    const x = px(uRoadL + roadFrac * (k / ROAD.laneCount));
+    if (k === oncEdge) {
+      g.fillStyle = "#e8c22a";
+      g.fillRect(x - 4, 0, 3, H);
+      g.fillRect(x + 1, 0, 3, H);
+      continue;
+    }
+    g.fillStyle = "#f4f4f4";
     for (let y = 0; y < H; y += H / 4) {            // 4 dash cycles per tile
       g.fillRect(x - 1, y, 3, Math.round(H / 4 * 0.55));
     }

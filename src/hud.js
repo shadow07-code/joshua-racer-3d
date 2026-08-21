@@ -20,6 +20,7 @@ export function makeHud(onPlayAgain) {
   const goPanel = el("gameover"), goScore = el("go-score"), goBest = el("go-best"),
     goNew = el("go-new"), goPassed = el("go-passed"), goTime = el("go-time"),
     goTop = el("go-top"), goBtn = el("go-again"), goCoins = el("go-coins"),
+    goNitro = el("go-nitro"), goAir = el("go-air"),
     goGradeLetter = el("go-grade-letter"), goGradeQual = el("go-grade-qual");
   const popupsEl = el("popups");
   if (goBtn && onPlayAgain) goBtn.addEventListener("click", onPlayAgain);
@@ -50,7 +51,12 @@ export function makeHud(onPlayAgain) {
     if (livesEl) livesEl.textContent = "♥".repeat(Math.max(0, s.lives));
     if (passedEl) passedEl.textContent = "PASSED " + s.passed;
     if (coinsEl) coinsEl.textContent = "🪙 " + (s.coins || 0);
-    if (speedEl) speedEl.textContent = Math.round(s.speed01 * PHYS.topSpeedKmh);
+    if (speedEl) {
+      // Nitro pushes speed01 past 1, so the readout genuinely climbs past the
+      // car's rated top speed — colour it to make that unmissable.
+      speedEl.textContent = Math.round(s.speed01 * PHYS.topSpeedKmh);
+      speedEl.classList.toggle("boost", (s.boost || 0) > 0);
+    }
     // Tach + gear: green → gold → red as the revs climb to the redline.
     if (tachFill) {
       const rev = Math.max(0, Math.min(1, s.rev || 0));
@@ -104,6 +110,8 @@ export function makeHud(onPlayAgain) {
     if (goCoins) goCoins.textContent = g.coins || 0;
     if (goTime) goTime.textContent = Math.floor(g.time) + "S";
     if (goTop) goTop.textContent = g.topSpeed + " KM/H";
+    if (goNitro) goNitro.textContent = g.nitros || 0;
+    if (goAir) goAir.textContent = (g.bestAir || 0).toFixed(1) + "S";
     if (goPanel) goPanel.classList.add("show");
   }
   function hideGameOver() { if (goPanel) goPanel.classList.remove("show"); }

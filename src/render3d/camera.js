@@ -23,10 +23,14 @@ export function makeChaseCam(camera, road) {
     const sp = Math.max(0, Math.min(1, player.speed / PHYS.maxSpeed));
     const back = CAMERA.back + CAMERA.backAtSpeed * sp;
     const height = CAMERA.height - CAMERA.dropAtSpeed * sp;
+    // Ramp jumps: the camera rises with the car but deliberately lags the arc —
+    // following it exactly would cancel the height out and the jump would read as
+    // the world dropping away instead of the car going up.
+    const air = player.y || 0;
     road.worldPos(player.z - back, player.x * CAMERA.lateralFollow, desiredPos);
-    desiredPos.y += height;
+    desiredPos.y += height + air * 0.55;
     road.worldPos(player.z + CAMERA.lookAhead, player.x * CAMERA.lookLateral, desiredLook);
-    desiredLook.y += 2.2;
+    desiredLook.y += 2.2 + air * 0.8;
   }
 
   // dt-independent exponential approach factor.

@@ -91,14 +91,53 @@ export function makeCar() {
   // Dark wheel arches.
   for (const [ax, az] of [[wx, fz], [-wx, fz], [wx, rz], [-wx, rz]]) add(rbox(2.0, 1.4, 4.2, 0.6), carbon, ax, 1.9, az);
 
-  // Soft contact shadow (flat on the ground — added to root, not body).
+  // ── Headlight beams + ground pool ── Dead weight at dusk, the whole reason
+  // you can still drive once night lands. Additive cones read as volumetric
+  // shafts; the pool is the light they throw on the tarmac ahead.
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: 0xfff0cc, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide,
+  });
+  const BEAM_LEN = 48;
+  for (const bx of [2.4, -2.4]) {
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(2.6, BEAM_LEN, 12, 1, true), beamMat);
+    beam.rotation.x = -Math.PI / 2;          // apex at the lamp, mouth thrown forward
+    beam.position.set(bx, 1.6, 9.0 + BEAM_LEN / 2);
+    body.add(beam);
+  }
+
+  // Ground-contact group: the shadow and the headlight pool both belong to the
+  // ROAD, not the car, so a jump has to leave them behind (see setAir).
+  const ground = new THREE.Group();
+  root.add(ground);
+
   const shadow = new THREE.Mesh(
     new THREE.PlaneGeometry(11, 20),
     new THREE.MeshBasicMaterial({ map: makeShadowTexture(), transparent: true, depthWrite: false })
   );
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.05;
-  root.add(shadow);
+  ground.add(shadow);
+
+  const poolMat = new THREE.MeshBasicMaterial({
+    map: makePoolTexture(), color: 0xffeec8, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+  });
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(30, 52), poolMat);
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.set(0, 0.12, 30);
+  ground.add(pool);
+
+  // Cool underglow — the one piece of "neon" the car itself wears. Rides WITH
+  // the car (it is bolted to the sills), so it goes up on a jump.
+  const underMat = new THREE.MeshBasicMaterial({
+    map: makePoolTexture(), color: 0x4be0d0, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide,
+  });
+  const under = new THREE.Mesh(new THREE.PlaneGeometry(16, 26), underMat);
+  under.rotation.x = -Math.PI / 2;
+  under.position.set(0, 0.3, 0);
+  root.add(under);
 
   // ── RAMPAGE aura (hidden until nitrous fires): a glowing ground ring + twin
   // nitrous flames out the back. Additive so bloom makes it blaze.
@@ -127,7 +166,30 @@ export function makeCar() {
       for (let i = 0; i < flames.length; i++) flames[i].scale.z = 0.8 + Math.sin(t * 30 + i) * 0.3;
     }
   }
-  return { root, body, setSteer, setRampage };
+
+  // Nightfall: lamps come up, the beams and pool switch on, the underglow lights.
+  let nightLevel = 0;
+  function setNight(n) {
+    nightLevel = n;
+    headMat.emissiveIntensity = 1.0 + 3.4 * n;
+    tailMat.emissiveIntensity = 2.2 + 1.6 * n;
+    beamMat.opacity = 0.085 * n;
+    poolMat.opacity = 0.40 * n;
+    underMat.opacity = 0.34 * n;
+  }
+
+  // Airborne: the shadow and the headlight pool stay on the road and shrink away
+  // beneath the car, which is most of what sells the height.
+  function setAir(y) {
+    ground.position.y = -y;
+    const k = 1 / (1 + y * 0.05);
+    ground.scale.set(k, 1, k);
+    const fade = Math.max(0, 1 - y / 14);
+    shadow.material.opacity = fade;
+    poolMat.opacity = 0.40 * nightLevel * fade;
+  }
+
+  return { root, body, setSteer, setRampage, setNight, setAir };
 }
 
 function makeLetterTexture(ch) {
@@ -141,6 +203,24 @@ function makeLetterTexture(ch) {
   g.textAlign = "center";
   g.textBaseline = "middle";
   g.fillText(ch, s / 2, s / 2 + 8);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// Soft elongated falloff, used for both the headlight pool on the road and the
+// car's underglow — bright at the near edge, gone by the far one.
+function makePoolTexture() {
+  const s = 128;
+  const cv = document.createElement("canvas");
+  cv.width = s; cv.height = s;
+  const g = cv.getContext("2d");
+  const grad = g.createRadialGradient(s / 2, s * 0.72, 2, s / 2, s * 0.72, s * 0.62);
+  grad.addColorStop(0.0, "rgba(255,255,255,0.95)");
+  grad.addColorStop(0.45, "rgba(255,255,255,0.35)");
+  grad.addColorStop(1.0, "rgba(255,255,255,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, s, s);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;

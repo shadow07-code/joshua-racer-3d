@@ -216,6 +216,79 @@ export function sfxBarrelDrop() {
   g.gain.linearRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + 0.44);
   o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.46);
 }
+// Nitro grab — a filtered noise whoosh sweeping up under a rising tone.
+export function sfxNitro() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const src = ctx.createBufferSource(); src.buffer = getNoiseBuf();
+  const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 4;
+  bp.frequency.setValueAtTime(500, t); bp.frequency.exponentialRampToValueAtTime(4200, t + 0.45);
+  const ng = ctx.createGain(); ng.gain.value = 0;
+  ng.gain.linearRampToValueAtTime(0.26, t + 0.06); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+  src.connect(bp); bp.connect(ng); ng.connect(sfxGain); src.start(t); src.stop(t + 0.55);
+  const o = ctx.createOscillator(); o.type = "sawtooth";
+  o.frequency.setValueAtTime(200, t); o.frequency.exponentialRampToValueAtTime(880, t + 0.4);
+  const g = ctx.createGain(); g.gain.value = 0;
+  g.gain.linearRampToValueAtTime(0.10, t + 0.05); g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+  o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.48);
+}
+
+// Opposing-car horn — the doppler blare of a head-on shave going past.
+export function sfxHorn() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  [440, 554].forEach((f) => {
+    const o = ctx.createOscillator(); o.type = "sawtooth";
+    o.frequency.setValueAtTime(f * 1.09, t);              // approaching...
+    o.frequency.linearRampToValueAtTime(f * 0.88, t + 0.34);   // ...and gone past
+    const g = ctx.createGain(); g.gain.value = 0;
+    g.gain.linearRampToValueAtTime(0.11, t + 0.02);
+    g.gain.setValueAtTime(0.11, t + 0.16);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+    o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.4);
+  });
+}
+
+// Ramp takeoff — a short upward whip.
+export function sfxLaunch() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type = "triangle";
+  o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(1100, t + 0.22);
+  const g = ctx.createGain(); g.gain.value = 0;
+  g.gain.linearRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
+  o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.28);
+}
+
+// Landing — suspension slam: a low thud plus a gravel-ish noise burst.
+export function sfxLand() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type = "sine";
+  o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.22);
+  const g = ctx.createGain(); g.gain.value = 0;
+  g.gain.linearRampToValueAtTime(0.30, t + 0.01); g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+  o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.3);
+  const src = ctx.createBufferSource(); src.buffer = getNoiseBuf();
+  const filt = ctx.createBiquadFilter(); filt.type = "lowpass"; filt.frequency.value = 1600;
+  const ng = ctx.createGain(); ng.gain.value = 0.16; ng.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+  src.connect(filt); filt.connect(ng); ng.connect(sfxGain); src.start(t); src.stop(t + 0.2);
+}
+
+// Klaxon that announces the opposing carriageway opening.
+export function sfxAlert() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  [0, 0.22, 0.44].forEach((off) => {
+    const o = ctx.createOscillator(); o.type = "square"; o.frequency.value = 330;
+    const g = ctx.createGain(); g.gain.value = 0;
+    g.gain.linearRampToValueAtTime(0.15, t + off + 0.02);
+    g.gain.setValueAtTime(0.15, t + off + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.001, t + off + 0.19);
+    o.connect(g); g.connect(sfxGain); o.start(t + off); o.stop(t + off + 0.21);
+  });
+}
+
 export function sfxGameOver() {
   if (!ctx) return;
   const t = ctx.currentTime;

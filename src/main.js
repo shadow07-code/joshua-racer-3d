@@ -3,7 +3,7 @@
 // plus an online LEADERBOARD reachable from the title and game-over. The 3D world
 // keeps animating as a live attract scene behind the menus.
 import * as THREE from "three";
-import { PHYS, STEER, SCORE, RACE } from "./config.js";
+import { PHYS, STEER, SCORE, RACE, ONCOMING, NITRO, JUMP, NIGHT } from "./config.js";
 import { initInput, getInput, consumePress, clearSteer } from "./input.js";
 import * as juice from "./juice.js";
 import { toggleComfort, isComfort } from "./comfort.js";
@@ -12,12 +12,18 @@ import { initPwa, setInstallButtonVisible } from "./pwa.js";
 import {
   initAudio, resumeAudio, suspendAudio, startEngine, stopEngine, setEngine, setEngineRampage,
   sfxNearMiss, sfxCombo, sfxBump, sfxCrash, sfxRampage, sfxShockwave, sfxBarrelDrop, sfxGameOver, sfxCoin, sfxShift,
+  sfxNitro, sfxHorn, sfxLaunch, sfxLand, sfxAlert,
   startHeliSound, stopHeliSound, isSfxEnabled, toggleSfx,
 } from "./audio.js";
-import { makePlayer, updatePlayer, playerBox, applyCollisionLoss } from "./entities/player.js";
-import { makeTrafficSystem, prepopulateTraffic, updateTraffic, checkTrafficHit, checkCoinGrab, smashCar, SPAWN_ROW_GAP } from "./entities/traffic.js";
+import { makePlayer, updatePlayer, playerBox, applyCollisionLoss, launchPlayer } from "./entities/player.js";
+import {
+  makeTrafficSystem, prepopulateTraffic, updateTraffic, checkTrafficHit, checkCoinGrab,
+  checkNitroGrab, checkRampHit, startOncoming, smashCar, SPAWN_ROW_GAP,
+} from "./entities/traffic.js";
 import { makeTrafficView } from "./render3d/vehicles.js";
 import { makeCoinsView } from "./render3d/coins.js";
+import { makeNitroView } from "./render3d/nitro.js";
+import { makeRampsView } from "./render3d/ramps.js";
 import { makeCopsSystem, updateCops, checkBarrelHit } from "./entities/cops.js";
 import { makeCopsView } from "./render3d/cops3d.js";
 import { makeScene } from "./render3d/scene.js";
@@ -35,7 +41,7 @@ import * as ui from "./ui.js";
 import { setPlayerName, getPlayerName, fetchTop, submitScore, flushPending, cachedTop } from "./leaderboard.js";
 
 const canvas = document.getElementById("game3d");
-const { renderer, scene, camera, resize, follow } = makeScene(canvas);
+const { renderer, scene, camera, resize, follow, setNight } = makeScene(canvas);
 const road = makeRoad(scene);
 const car = makeCar();
 scene.add(car.root);
@@ -56,6 +62,8 @@ const traffic = makeTrafficSystem();
 prepopulateTraffic(traffic, 500);
 const trafficView = makeTrafficView(scene, road);
 const coinsView = makeCoinsView(scene, road);
+const nitroView = makeNitroView(scene, road);
+const rampsView = makeRampsView(scene, road);
 
 // Threats + escalation (Phase 5): police helicopter + density scaling.
 let cops = makeCopsSystem();
@@ -74,7 +82,10 @@ let playerName = getPlayerName();
 
 const score = makeScoreState();
 let combo = 0, comboTimer = 0, comboBest = 0, nearMissTimer = 0, crashFlash = 0;
-let raceTime = 0, topSpeedKmh = 0, coinsCollected = 0;
+let raceTime = 0, topSpeedKmh = 0, coinsCollected = 0, nitrosGrabbed = 0, bestAir = 0;
+// Nightfall (0 = the locked warm dusk, 1 = full night). Only advances while
+// RACING, so every menu keeps the dusk hero shot the project is art-directed to.
+let nightT = 0;
 let rampageMeter = 0, rampageCooldown = 0, rampageMsg = "", rampageMsgTimer = 0;
 let heliSoundOn = false;
 
@@ -119,15 +130,20 @@ function ensureAudio() { initAudio(); resumeAudio(); startOnce(); }
 
 // Reset the whole world for a fresh run (also used to populate the attract scene).
 function resetWorld() {
+  road.reset();            // rebuild the centerline from z=0, or the world loads skewed
   player.z = 0; player.x = 0; player.speed = PHYS.startSpeed;
   player.raceTime = 0; player.steerSmooth = 0; player.steerVis = 0; player.steerLock = 0;
   player.vx = 0; player.slip = 0; player.accel01 = 0; player.lastSpeed = null; lastGear = 1;
+  player.y = 0; player.vy = 0; player.airT = 0; player.airborne = false;
   player.lives = RACE.startLives; player.invuln = 1.5;
   player.rampage = 0; player.boost = 0;
   traffic.list.length = 0; traffic.coins.length = 0; traffic.nextRowZ = 80; traffic.lastGapLane = 2;
   traffic.rowsSpawned = 0; traffic.passedCount = 0; traffic.rowGapZ = SPAWN_ROW_GAP;
+  traffic.nitros.length = 0; traffic.ramps.length = 0;
+  traffic.oncomingOn = false; traffic.nextOncomingZ = 0; traffic.lastRampZ = -1e9;
   prepopulateTraffic(traffic, 500);
-  coinsCollected = 0;
+  coinsCollected = 0; nitrosGrabbed = 0; bestAir = 0;
+  nightT = 0;
   cops = makeCopsSystem();
   startScoring(score, 0);
   combo = 0; comboTimer = 0; comboBest = 0; nearMissTimer = 0; crashFlash = 0;
@@ -135,6 +151,7 @@ function resetWorld() {
   rampageMeter = 0; rampageCooldown = 0; rampageMsg = ""; rampageMsgTimer = 0;
   hitTopSpeed = false; densityTimer = 0; densityMul = 1;
   attractT = 0;
+  applyNight(0);
   speedMsIdx = 0; comboMsHit.clear();
   clearSteer();            // drop any latched steer so a new run starts straight
   chase.snap();            // camera jumps to behind the car (no glide-in from old z)
@@ -213,6 +230,7 @@ function endRun() {
   const run = {
     score: Math.floor(score.score), best: bestEverScore(), isNew,
     passed: traffic.passedCount, time: raceTime, topSpeed: topSpeedKmh, coins: coinsCollected,
+    nitros: nitrosGrabbed, bestAir, night: nightT,
   };
   hud.showGameOver(run);
   setState(STATE.GAMEOVER);
@@ -292,6 +310,32 @@ const FIXED_DT = 1 / 60;
 let acc = 0;
 let lastT = performance.now();
 
+// Push the current nightfall level through every system that has a look to
+// grade. Guarded, because most frames it hasn't moved.
+let nightApplied = -1;
+function applyNight(n) {
+  if (n === nightApplied) return;
+  nightApplied = n;
+  setNight(n);
+  car.setNight(n);
+  trafficView.setNight(n);
+  scenery.setNight(n);
+  environment.setNight(n);
+  rampsView.setNight(n);
+}
+
+// Touchdown after a ramp jump — air time is the score, and the longer it was the
+// harder the landing lands.
+function onLanded(air) {
+  const gain = Math.round(JUMP.airScorePerSec * air);
+  score.score += gain;
+  bestAir = Math.max(bestAir, air);
+  sfxLand();
+  juice.addShake(JUMP.landShake * (0.6 + 0.5 * Math.min(1, air)));
+  const huge = air >= 1.4;
+  hud.popup((huge ? "HUGE AIR! +" : "AIR! +") + gain, "smash", huge);
+}
+
 // Gentle auto-driving backdrop shown behind the title / name / leaderboard /
 // tutorial menus. No scoring, no collisions, no cops — just a lively scene.
 function stepAttract(dt) {
@@ -312,8 +356,21 @@ function stepAttract(dt) {
 }
 
 function stepRace(dt) {
-  updatePlayer(player, dt, getInput(), { onFenceBump: sfxBump });
+  updatePlayer(player, dt, getInput(), { onFenceBump: sfxBump, onLand: onLanded });
   raceTime += dt;
+
+  // NIGHTFALL — a one-way grade from the locked warm dusk into full night, after
+  // a short grace period so the opening frames are still the art-directed look.
+  if (raceTime > NIGHT.startAfter) nightT = Math.min(1, (raceTime - NIGHT.startAfter) / NIGHT.fallSeconds);
+
+  // The opposing carriageway opens. Announced hard, because it silently changes
+  // the rule of an entire lane the player has spent half a minute using freely.
+  if (!traffic.oncomingOn && raceTime >= ONCOMING.startSeconds) {
+    startOncoming(traffic, player.z);
+    hud.popup("ONCOMING TRAFFIC!", "milestone", true);
+    rampageMsg = "LEFT LANE IS NOW TWO-WAY"; rampageMsgTimer = 2.6;
+    sfxAlert(); juice.addShake(0.25);
+  }
   const kmhNow = Math.round(player.speed / PHYS.maxSpeed * PHYS.topSpeedKmh);
   if (kmhNow > topSpeedKmh) topSpeedKmh = kmhNow;
   while (speedMsIdx < SPEED_MILESTONES.length && topSpeedKmh >= SPEED_MILESTONES[speedMsIdx]) {
@@ -341,13 +398,19 @@ function stepRace(dt) {
   // Traffic sim + scoring (pass bonus ×combo; near-miss two tiers).
   updateTraffic(traffic, dt, player.z, {
     playerX: player.x,
+    playerY: player.y,
     onPassed: () => {
       score.score += SCORE.passBonus * Math.max(1, combo);
       if (rampageCooldown > 0) rampageCooldown -= 1;     // pass-cooldown burns down
     },
-    onNearMiss: (tightness = 0) => {
+    onNearMiss: (tightness = 0, car2 = null) => {
       const kmh = player.speed / PHYS.maxSpeed * PHYS.topSpeedKmh;
-      const precision = 1 + SCORE.precisionMax * tightness;     // 1 → 1.6 on a pixel-close shave
+      // A head-on shave is the same skill at roughly double the closing speed,
+      // so it pays roughly double — that multiplier IS the reason to gamble on
+      // the opposing lane rather than treat it as a wall.
+      const headOn = !!(car2 && car2.oncoming);
+      const precision = (1 + SCORE.precisionMax * tightness) * (headOn ? ONCOMING.nearMissMul : 1);
+      if (headOn) { sfxHorn(); juice.addShake(0.16); }
       // A tight shave rewards skill: a micro-freeze that punctuates the moment,
       // and a PERFECT! callout on the closest ones.
       if (tightness >= 0.55) { juice.hitStop(0.05); juice.addShake(0.14); }
@@ -359,7 +422,8 @@ function stepRace(dt) {
         score.score += gain;
         sfxCombo(combo);
         juice.addShake(0.05);
-        hud.popup(perfect ? "PERFECT! +" + gain : "+" + gain, perfect ? "perfect" : "nearmiss", perfect);
+        const label = headOn ? "HEAD-ON! +" + gain : perfect ? "PERFECT! +" + gain : "+" + gain;
+        hud.popup(label, headOn ? "headon" : perfect ? "perfect" : "nearmiss", perfect || headOn);
         if (combo >= 5 && combo % 5 === 0 && !comboMsHit.has(combo)) {
           comboMsHit.add(combo);
           hud.popup("COMBO ×" + combo + "!", "combo", true);
@@ -381,7 +445,8 @@ function stepRace(dt) {
       } else {                                     // discreet flat bonus, no combo
         score.score += Math.round(SCORE.nearMissBonus * precision);
         nearMissTimer = 0.8;
-        if (perfect) hud.popup("PERFECT!", "perfect");
+        if (headOn) hud.popup("HEAD-ON!", "headon");
+        else if (perfect) hud.popup("PERFECT!", "perfect");
         sfxNearMiss();
       }
     },
@@ -408,33 +473,57 @@ function stepRace(dt) {
   if (helisOn && !heliSoundOn) { startHeliSound(); heliSoundOn = true; }
   else if (!helisOn && heliSoundOn) { stopHeliSound(); heliSoundOn = false; }
 
-  // Collisions.
+  // RAMP — resolved BEFORE collisions, so the take-off frame is already airborne
+  // and nothing parked near the lip can clip the car on its way up.
+  if (checkRampHit(traffic, playerBox(player), player.y) && launchPlayer(player)) {
+    sfxLaunch();
+    juice.addShake(0.2);
+  }
+
+  // Collisions. Everything below is skipped while airborne (checkTrafficHit and
+  // checkBarrelHit both take the height and bail out up there).
   if (player.rampage > 0) {
     // RAMPAGE: plow through — each smash feeds the combo; invincible, no life loss.
     const box = playerBox(player);
     let t, guard = 0;
-    while ((t = checkTrafficHit(traffic, box)) && guard++ < 8) { smashCar(t, player.x); registerSmash(); }
+    while ((t = checkTrafficHit(traffic, box, player.y)) && guard++ < 8) { smashCar(t, player.x); registerSmash(); }
   } else if (player.invuln <= 0) {
-    const t = checkTrafficHit(traffic, playerBox(player));
+    const t = checkTrafficHit(traffic, playerBox(player), player.y);
     if (t) {
       smashCar(t, player.x);                       // knock the hit car aside (no clip-through)
       player.x += player.x > t.x ? 3.5 : -3.5;
       player.steerSmooth = 0;
-      if (takeHit(0.5, 1.4)) return;
+      // A head-on arrives at roughly double the closing speed and hurts to match.
+      const headOn = !!t.oncoming;
+      if (headOn) juice.addShake(0.4);
+      if (takeHit(headOn ? ONCOMING.hitSeverity : 0.5, headOn ? 1.6 : 1.4)) return;
     }
     // Flaming barrel (skipped if a traffic hit this frame already granted invuln).
-    if (player.invuln <= 0) {
+    if (player.invuln <= 0 && !player.airborne) {
       const bar = checkBarrelHit(cops, playerBox(player));
       if (bar) { bar.hit = true; if (takeHit(0.5, 1.2)) return; }
     }
   }
 
-  // Coins on the ideal weaving line — grabbed anytime (even mid-rampage / invuln).
-  const gotCoins = checkCoinGrab(traffic, playerBox(player));
+  // Coins on the ideal weaving line — grabbed anytime (even mid-rampage / invuln),
+  // but not from mid-air.
+  const gotCoins = checkCoinGrab(traffic, playerBox(player), player.y);
   if (gotCoins) {
     coinsCollected += gotCoins;
     score.score += gotCoins * SCORE.coinValue;
     sfxCoin();
+  }
+
+  // NITRO — banks overspeed seconds. player.boost already drives the speed cap,
+  // so this is the one pickup that changes how the car behaves, not just the score.
+  const gotNitro = checkNitroGrab(traffic, playerBox(player), player.y);
+  if (gotNitro) {
+    nitrosGrabbed += gotNitro;
+    player.boost = Math.min(NITRO.maxStock, player.boost + NITRO.seconds * gotNitro);
+    score.score += gotNitro * NITRO.value;
+    sfxNitro();
+    juice.addShake(0.12);
+    hud.popup("NITRO!", "nitro", true);
   }
 
   // Combo decay (a lapsed chain dumps the meter), flash timers.
@@ -483,8 +572,11 @@ function render() {
   road.update(player.z);
   // Place + orient the car: position on the centerline, yaw to the road heading,
   // and BANK the model into the steer (camera stays level — comfort lever).
+  applyNight(nightT);
   road.worldPos(player.z, player.x, _carPos);
   car.root.position.copy(_carPos);
+  car.root.position.y = player.y || 0;             // ramp jumps lift the whole car
+  car.setAir(player.y || 0);                       // ...but its shadow stays on the road
   // Nose yaw = road heading + steering intent + SLIP. The slip term is the drift:
   // the car rotates into a turn ahead of its mass, and counter-settles on release.
   car.root.rotation.y = road.headingAt(player.z)
@@ -495,14 +587,20 @@ function render() {
   car.body.rotation.z = -(player.vx || 0) / PHYS.steerSpeed * STEER.bank;
   // Weight transfer: squat under power, dive under braking/impact.
   // Negated: a positive rotation.x pitches the nose DOWN in three.js, and under
-  // power the nose should lift (squat) — a crash then dives it.
-  car.body.rotation.x = -(player.accel01 || 0) * STEER.pitch;
+  // power the nose should lift (squat) — a crash then dives it. In the air the
+  // same sign convention rotates the nose up on the way out and down on the way
+  // in, which is what makes a jump read as an arc rather than a hop.
+  car.body.rotation.x = player.airborne
+    ? -Math.max(-1, Math.min(1, player.vy / JUMP.takeoffVy)) * 0.30
+    : -(player.accel01 || 0) * STEER.pitch;
   car.setSteer(player.steerVis * STEER.wheelMax);
   car.setRampage(player.rampage > 0, performance.now() / 1000);
   // Blink the car while invulnerable (just after a crash), but only mid-race.
   car.root.visible = !(state === STATE.RACE && player.invuln > 0 && Math.floor(performance.now() / 70) % 2 === 0);
-  trafficView.update(traffic, FIXED_DT);
+  trafficView.update(traffic, FIXED_DT, player.z);
   coinsView.update(traffic, player.z);
+  nitroView.update(traffic, player.z);
+  rampsView.update(traffic, player.z);
   copsView.update(cops, player.z);
   scenery.update(player.z, speed01);
   environment.update(player.z);
@@ -516,6 +614,7 @@ function render() {
     speed01, combo, comboTimer, nearMissTimer, crashFlash, ...gearAt(speed01),
     rampageActive: player.rampage > 0, rampageMeter, rampageCooldown,
     rampageMsg, rampageMsgTimer,
+    boost: player.boost || 0, airborne: !!player.airborne,
   });
   fx.render();
   camera.position.x -= _shake.x; camera.position.y -= _shake.y;

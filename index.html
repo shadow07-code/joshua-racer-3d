@@ -41,7 +41,8 @@
     #hud.show { display: block; }
     #speed-wrap { position: absolute; right: calc(env(safe-area-inset-right) + 18px);
       bottom: calc(env(safe-area-inset-bottom) + 18px); text-align: right; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
-    #speed { font-size: 60px; font-weight: 800; line-height: 0.9; letter-spacing: 1px; }
+    #speed { font-size: 60px; font-weight: 800; line-height: 0.9; letter-spacing: 1px; transition: color 0.15s linear; }
+    #speed.boost { color: #4ff0d4; text-shadow: 0 0 18px rgba(70,240,210,0.9); }
     /* Tachometer — revs sweep within a gear and snap back on each upshift. The
        rise-drop-rise pulse is what makes the car read as a working machine. */
     #tach { width: 148px; height: 7px; margin: 0 0 7px auto; border-radius: 4px; overflow: hidden;
@@ -208,6 +209,8 @@
     .popup.smash     { color: #ff9a3c; font-size: 26px; }
     .popup.milestone { color: #fff; font-size: 28px; text-shadow: 0 0 16px rgba(255,170,90,0.75), 0 2px 10px rgba(0,0,0,0.7); }
     .popup.perfect   { color: #aef9ff; font-size: 30px; text-shadow: 0 0 16px rgba(150,240,255,0.95), 0 2px 10px rgba(0,0,0,0.7); }
+    .popup.headon    { color: #ffd24a; font-size: 32px; text-shadow: 0 0 18px rgba(255,150,40,0.95), 0 2px 10px rgba(0,0,0,0.8); }
+    .popup.nitro     { color: #4ff0d4; font-size: 30px; text-shadow: 0 0 18px rgba(70,240,210,0.95), 0 2px 10px rgba(0,0,0,0.7); }
     .popup.big       { font-size: 42px; }
     @keyframes popup-rise {
       0%   { opacity: 0; transform: translate(-50%, 16px) scale(0.7); }
@@ -374,6 +377,8 @@
         <div class="go-stat">COINS<b id="go-coins">0</b></div>
         <div class="go-stat">TIME<b id="go-time">0S</b></div>
         <div class="go-stat">TOP<b id="go-top">0 KM/H</b></div>
+        <div class="go-stat">NITRO<b id="go-nitro">0</b></div>
+        <div class="go-stat">BEST AIR<b id="go-air">0.0S</b></div>
       </div>
       <button id="go-again">PLAY AGAIN</button>
       <div class="go-actions">

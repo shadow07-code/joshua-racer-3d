@@ -5,13 +5,14 @@
 // road, lights brake lamps when they slow, and blinks amber turn signals.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { ONCOMING } from "../config.js";
 
 function rbox(w, h, d, r) {
   r = r ?? Math.max(0.25, Math.min(w, h, d) * 0.3);
   return new RoundedBoxGeometry(w, h, d, 3, r);
 }
 
-function makeVehicleMesh(skin) {
+function makeVehicleMesh(skin, oncoming) {
   const { w, h, height, color, shape } = skin;
   const g = new THREE.Group();
 
@@ -75,9 +76,26 @@ function makeVehicleMesh(skin) {
   const sigNeg = add(sigGeo, mkSig(), -(w / 2 - 0.1), midY, h / 2 - 1.6);
   sigPos.visible = false; sigNeg.visible = false;
 
+  // Opposing traffic points its headlights straight down the camera, so it gets
+  // real beams — at night that pair of oncoming lights IS the warning.
+  let beamMat = null;
+  if (oncoming) {
+    beamMat = new THREE.MeshBasicMaterial({
+      color: 0xfff2d4, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide,
+    });
+    const LEN = 42;
+    for (const bx of [w / 2 - 1.3, -(w / 2 - 1.3)]) {
+      const beam = new THREE.Mesh(new THREE.ConeGeometry(2.2, LEN, 10, 1, true), beamMat);
+      beam.rotation.x = -Math.PI / 2;
+      beam.position.set(bx, midY, h / 2 + LEN / 2);
+      g.add(beam);
+    }
+  }
+
   g.scale.setScalar(0.85);
   // tailMat is shared by both lamps — adjust once to brake.
-  g.userData = { tailMat, sigPos, sigNeg };
+  g.userData = { tailMat, headMat, beamMat, sigPos, sigNeg };
   return g;
 }
 
@@ -94,31 +112,45 @@ function disposeGroup(g) {
 export function makeTrafficView(scene, road) {
   const meshes = new Map();
   const v = new THREE.Vector3();
+  const live = new Set();
+  let night = 0;
 
-  function update(sys, dt) {
+  // Opposing cars are born far beyond the fog so they arrive as a real approach;
+  // building their meshes that early would be pure waste, so nothing gets a body
+  // until it is close enough to be seen.
+  function update(sys, dt, playerZ = 0) {
     const now = performance.now();
-    const live = new Set(sys.list);
+    live.clear();
 
     for (const car of sys.list) {
+      if (car.z > playerZ + ONCOMING.cullAhead) continue;
+      live.add(car);
       let g = meshes.get(car);
-      if (!g) { g = makeVehicleMesh(car.skin); scene.add(g); meshes.set(car, g); }
+      if (!g) { g = makeVehicleMesh(car.skin, car.oncoming); scene.add(g); meshes.set(car, g); }
 
       road.worldPos(car.z, car.x, v);
       g.position.set(v.x, 0, v.z);
-      g.rotation.y = road.headingAt(car.z);
+      // Opposing traffic faces back down the road at the player.
+      g.rotation.y = road.headingAt(car.z) + (car.oncoming ? Math.PI : 0);
+
+      const ud = g.userData;
+      // Everyone's lamps come up after dark; oncoming cars run a touch hotter
+      // still, because those two points of light are the whole telegraph.
+      ud.headMat.emissiveIntensity = (car.oncoming ? 1.6 : 0.6) + (car.oncoming ? 4.4 : 2.6) * night;
+      if (ud.beamMat) ud.beamMat.opacity = 0.07 * night;
 
       if (car.smashed) {
-        g.userData.tumble = (g.userData.tumble || 0) + dt * 7;
-        g.rotation.z = g.userData.tumble;
-        g.userData.sigPos.visible = g.userData.sigNeg.visible = false;
+        ud.tumble = (ud.tumble || 0) + dt * 7;
+        g.rotation.z = ud.tumble;
+        ud.sigPos.visible = ud.sigNeg.visible = false;
       } else {
         g.rotation.z = 0;
         const braking = car.cruise != null && car.speed < car.cruise - 1.2;
-        g.userData.tailMat.emissiveIntensity = braking ? 3.4 : 1.1;
+        ud.tailMat.emissiveIntensity = (braking ? 3.4 : 1.1) + 1.1 * night;
         const sig = car.signalT > 0 ? Math.sign(car.pendingDriftVx || 0) : Math.sign(car.driftVx || 0);
         const blink = (Math.floor((now + (car.sigPhase || 0)) / 280) % 2) === 0;
-        g.userData.sigPos.visible = sig > 0 && blink;
-        g.userData.sigNeg.visible = sig < 0 && blink;
+        ud.sigPos.visible = sig > 0 && blink;
+        ud.sigNeg.visible = sig < 0 && blink;
       }
     }
 
@@ -127,5 +159,7 @@ export function makeTrafficView(scene, road) {
     }
   }
 
-  return { update };
+  function setNight(n) { night = n; }
+
+  return { update, setNight };
 }

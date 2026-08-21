@@ -4,8 +4,8 @@
     {
       "name": "joshua-racer-3d",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["-y", "serve", "-l", "5173", "."],
-      "port": 5173
+      "runtimeArgs": ["-y", "serve", "-l", "8099", "."],
+      "port": 8099
     }
   ]
 }

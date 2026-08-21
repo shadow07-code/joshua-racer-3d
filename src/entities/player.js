@@ -2,12 +2,16 @@
 // rubber-fence edges. PORTED from the 2D reference (src/entities/player.js); the
 // drawing is gone (render3d/models.js owns that). `x` is the lateral offset from
 // the road CENTERLINE — pure scalar, so the curve never touches this math.
-import { PHYS, ROAD } from "../config.js";
+import { PHYS, ROAD, JUMP } from "../config.js";
 
 export function makePlayer() {
   return {
     z: 0,            // distance traveled along the road (world units)
     x: 0,            // lateral offset from the centerline
+    y: 0,            // height above the road — non-zero only mid-jump
+    vy: 0,           // vertical velocity while airborne
+    airT: 0,         // seconds of air on the current jump
+    airborne: false,
     speed: PHYS.startSpeed,
     boost: 0,        // seconds of nitro remaining (Rampage, later phases)
     edgeContact: 0,  // which fence the car is against (-1/0/+1)
@@ -81,7 +85,9 @@ export function updatePlayer(p, dt, input, callbacks) {
   // two is SLIP: positive when the car is steering harder than it is yet moving
   // (nose rotates into the turn), negative on release (the car counter-settles).
   // The renderer turns slip into extra nose yaw — that is the drift look.
-  const targetVx = steer * PHYS.steerSpeed * steerScale;
+  // Off a ramp the wheels have nothing to bite on, so steering authority
+  // collapses to a bit of aero yaw — you commit to the line you took off with.
+  const targetVx = steer * PHYS.steerSpeed * steerScale * (p.airborne ? JUMP.airSteer : 1);
   p.vx += (targetVx - p.vx) * Math.min(1, dt * PHYS.grip);
   p.x += p.vx * dt;
   p.slip = Math.max(-1, Math.min(1, (targetVx - p.vx) / PHYS.steerSpeed));
@@ -111,6 +117,20 @@ export function updatePlayer(p, dt, input, callbacks) {
 
   p.z += p.speed * dt;
 
+  // ── AIR ── A ramp hands the car a vertical velocity and gravity does the rest.
+  // Nothing else changes: forward speed is untouched, so a jump is pure upside —
+  // spectacle plus a window where traffic passes harmlessly underneath.
+  if (p.airborne) {
+    p.airT += dt;
+    p.y += p.vy * dt;
+    p.vy -= JUMP.gravity * dt;
+    if (p.y <= 0) {
+      const air = p.airT;
+      p.y = 0; p.vy = 0; p.airT = 0; p.airborne = false;
+      if (callbacks?.onLand) callbacks.onLand(air);
+    }
+  }
+
   // WEIGHT TRANSFER: smoothed longitudinal acceleration, normalized so the
   // renderer can squat the body under power and dive it on an impact (a crash
   // drops speed hard outside this function, which reads as a big nose-dive).
@@ -125,6 +145,17 @@ export function updatePlayer(p, dt, input, callbacks) {
   p.lastSpeed = p.speed;
 
   if (p.invuln > 0) p.invuln = Math.max(0, p.invuln - dt);
+}
+
+// Launch off a ramp. Starts at the lip height so the arc continues the ramp
+// surface instead of snapping back to the road first.
+export function launchPlayer(p) {
+  if (p.airborne) return false;
+  p.airborne = true;
+  p.vy = JUMP.takeoffVy;
+  p.y = JUMP.rampRise;
+  p.airT = 0;
+  return true;
 }
 
 export function applyCollisionLoss(p, severity, invulnSeconds = 0.6) {
