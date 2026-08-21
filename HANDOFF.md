@@ -314,6 +314,10 @@ git add -A && git commit -m "..." && git push origin main
 vercel deploy --prod --yes
 ```
 
+**Pushing does NOT deploy.** The Vercel project is not git-connected — every deployment in its
+history was made manually by the CLI. A `git push` updates GitHub and leaves the live site on the
+previous build, so the `vercel deploy` line above is always required.
+
 Vercel serves this as a **static site + `api/` function, with no build command**. Always bump the
 `sw.js` `VERSION` first, then confirm the live worker after deploying:
 
