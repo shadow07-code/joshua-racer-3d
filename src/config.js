@@ -90,9 +90,9 @@ export const SCORE = {
 // plays the slipstream line scores ~33k over two minutes, so S is a long run
 // held genuinely hot rather than a long run survived.
 export const GRADES = [
-  [75000, "S", "LEGENDARY!", "#ffd24a"],
-  [35000, "A", "GREAT RUN",  "#5ef08a"],
-  [14000, "B", "SOLID",      "#9be7ff"],
+  [60000, "S", "LEGENDARY!", "#ffd24a"],
+  [30000, "A", "GREAT RUN",  "#5ef08a"],
+  [12000, "B", "SOLID",      "#9be7ff"],
   [0,     "C", "KEEP GOING", "#cfc7e6"],
 ];
 
@@ -161,7 +161,6 @@ export const KEYS = {
 // first frame (see render3d/road.js) so the rule is legible before it bites.
 export const ONCOMING = {
   lane: 0,                 // leftmost lane (screen-left) is the opposing carriageway
-  startSeconds: 34,        // race time at which the opposing lane goes live
   gap: 380,                // base world-space spacing between opposing cars
   gapJitter: 180,
   spawnAhead: 620,         // born this far out — beyond the fog, so they fade IN
@@ -200,9 +199,10 @@ export const JUMP = {
 // headlights and neon take over, and a long run visibly earns its own atmosphere.
 // Deliberately NOT looping — the escalation reads as progress. Menus stay at
 // dusk (nightT only advances while racing), preserving the warm title shot.
+// Nightfall is now driven by the SECTOR table (src/stages.js), which sets a
+// target level the grade eases toward; only the exposure endpoints live here.
 export const NIGHT = {
-  fallSeconds: 95,         // race seconds from full dusk to full night
-  startAfter: 12,          // ... after this much grace at dusk
+  easeRate: 0.22,          // how fast nightT chases the sector's target
   exposureDusk: 1.22,
   exposureNight: 0.74,
 };
@@ -235,6 +235,7 @@ export const HEAT = {
   coin: 0.03,
   canister: 0.28,          // nitro pickups are now heat pickups
   smash: 0.05,             // per car plowed during overdrive — feeds the frenzy
+  sectorBonus: 0.18,       // clean top-up for reaching a new sector
 
   // Costs.
   crash: 0.45,             // a crash is survivable if you are hot, fatal if cold
@@ -263,4 +264,20 @@ export const DASH = {
   vx: 195,                 // lateral speed while dashing (~2 lanes in one dash)
   time: 0.24,
   cooldown: 0.45,
+};
+
+// ── CHAIN ────────────────────────────────────────────────────────────────────
+// The skill ceiling. Every risk you take — a shave, a held slipstream, a landed
+// jump, a canister, a smash — links the chain, and the chain multiplies BOTH the
+// heat those risks pay and the score they earn. It lapses if you play safe for a
+// moment and it resets to nothing if you crash.
+//
+// This is what turns a good run into a story. "I scored 41,880" is a number;
+// "I had a 46 chain going and then hit a bus" is a thing you tell someone.
+export const CHAIN = {
+  window: 3.2,             // seconds of no risk before the chain lapses
+  cap: 30,                 // links past this still count, but stop multiplying
+  step: 0.04,              // → ×2.2 at the cap
+  draftMin: 0.45,          // a slipstream must be HELD this long to link
+  milestones: [10, 20, 30, 50, 75, 100],
 };

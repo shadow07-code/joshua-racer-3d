@@ -10,7 +10,9 @@ import { fileURLToPath } from "node:url";
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const imp = (p) => import(pathToFileURL(join(SRC, p)).href);
 
-const { PHYS, HEAT, ONCOMING, SCORE } = await imp("config.js");
+const { PHYS, HEAT, ONCOMING, SCORE, CHAIN } = await imp("config.js");
+const ST = await imp("stages.js");
+const RK = await imp("rank.js");
 const H = await imp("heat.js");
 const { makePlayer, updatePlayer, playerBox } = await imp("entities/player.js");
 const T = await imp("entities/traffic.js");
@@ -92,21 +94,29 @@ function runBot(policy, seconds) {
   const p = makePlayer();
   const h = H.makeHeat();
   let score = 0, lastZ = 0, t = 0, crashes = 0, nearMisses = 0, draftTime = 0, maxHeat = 0;
+  let chain = 0, chainTimer = 0, chainBest = 0, draftStreak = 0, sectorBest = 1;
+  const chainMul = () => 1 + Math.min(chain, CHAIN.cap) * CHAIN.step;
+  const link = () => { chain++; chainBest = Math.max(chainBest, chain); chainTimer = CHAIN.window; };
   while (t < seconds && !h.dead) {
     const steer = policy(sys, p, h);
     p.throttle01 = H.heatSpeed01(h);
     updatePlayer(p, DT, { steer }, {});
-    sys.densityMul = H.heatDensity(h);
+    const sector = ST.sectorAt(ST.sectorIndexAt(p.z));
+    sectorBest = Math.max(sectorBest, sector.index);
+    sys.densityMul = H.heatDensity(h) * sector.density;
     T.updateTraffic(sys, DT, p.z, {
       playerX: p.x, playerY: p.y,
       onPassed: () => {},
       onNearMiss: (tight, c) => {
         nearMisses++;
-        H.addHeat(h, (HEAT.nearMiss + HEAT.nearMissTight * tight) * (c && c.oncoming ? HEAT.oncomingMul : 1));
+        H.addHeat(h, (HEAT.nearMiss + HEAT.nearMissTight * tight) * (c && c.oncoming ? HEAT.oncomingMul : 1) * chainMul());
+        link();
       },
     });
     const d = T.draftTarget(sys, p.x, p.z, p.y);
-    if (d) { draftTime += DT; H.addHeat(h, HEAT.draftRate * d.closeness * DT); }
+    if (d) { draftTime += DT; draftStreak += DT; H.addHeat(h, HEAT.draftRate * d.closeness * DT); }
+    else if (draftStreak > 0) { if (draftStreak > CHAIN.draftMin) link(); draftStreak = 0; }
+    if (chainTimer > 0) { chainTimer -= DT; if (chainTimer <= 0) chain = 0; }
     if (!h.overdrive && p.invuln <= 0) {
       const hit = T.checkTrafficHit(sys, playerBox(p), p.y);
       if (hit) {
@@ -115,6 +125,7 @@ function runBot(policy, seconds) {
         p.speed = Math.max(PHYS.startSpeed * 0.5, p.speed * 0.5);
         p.invuln = 1.4;
         H.addHeat(h, -HEAT.crash);
+        chain = 0; chainTimer = 0;
       }
     }
     if (p.invuln > 0) p.invuln = Math.max(0, p.invuln - DT);
@@ -124,7 +135,7 @@ function runBot(policy, seconds) {
     lastZ = p.z;
     t += DT;
   }
-  return { t, h, score, crashes, nearMisses, draftTime, maxHeat };
+  return { t, h, score, crashes, nearMisses, draftTime, maxHeat, chainBest, sectorBest, dist: p.z };
 }
 
 // The coward: holds the middle lane, never goes near anything.
@@ -149,6 +160,8 @@ for (const [name, pol] of [["COWARD (never risks)", coward], ["RACER (plays the 
   const verdict = r.h.dead ? `DIED at ${r.t.toFixed(0)}s` : `alive at 120s`;
   line(`   ${name.padEnd(24)} ${verdict.padEnd(18)} peak heat ${(r.maxHeat * 100).toFixed(0)}%  ` +
        `shaves ${r.nearMisses}  draft ${r.draftTime.toFixed(0)}s  crashes ${r.crashes}  score ${Math.round(r.score).toLocaleString()}`);
+  line(`   ${"".padEnd(24)} reached SECTOR ${r.sectorBest} (${ST.sectorAt(r.sectorBest).name}), ` +
+       `best chain ${r.chainBest}, ${Math.round(r.dist).toLocaleString()} m`);
 }
 
 // ── F. Score calibration for the letter grades ───────────────────────────────
@@ -159,4 +172,33 @@ line("\nF. SCORE RATES (for GRADES thresholds)");
   const rate = r.score / Math.max(1, r.t);
   line(`   ≈ ${Math.round(rate).toLocaleString()}/s — so 60s≈${Math.round(rate * 60).toLocaleString()}, ` +
        `120s≈${Math.round(rate * 120).toLocaleString()}, 240s≈${Math.round(rate * 240).toLocaleString()}`);
+}
+
+// ── G. Sectors: is the ladder actually reachable? ────────────────────────────
+line("");
+line("G. SECTOR LADDER");
+{
+  for (let i = 1; i <= 10; i++) {
+    const sc = ST.sectorAt(i);
+    const z = ST.sectorStartZ(i);
+    const tHot = z / (PHYS.maxSpeed * 0.95);
+    const tMid = z / (PHYS.maxSpeed * 0.78);
+    line(`   ${String(i).padStart(2)} ${sc.name.padEnd(12)} ${String(Math.round(z)).padStart(6)} m ` +
+         `→ ${String(Math.round(tHot)).padStart(3)}s hot / ${String(Math.round(tMid)).padStart(3)}s middling` +
+         `  [night ${sc.night.toFixed(2)}${sc.oncoming ? " onc" : "    "}${sc.cops ? " cops" : "     "} dens x${sc.density.toFixed(2)}]`);
+  }
+}
+
+// ── H. Rank ladder: how many good runs to each title? ────────────────────────
+line("");
+line("H. RANK LADDER (at ~20k per strong run)");
+{
+  const RUN = 20000;
+  for (let i = 1; i <= RK.MAX_RANK; i++) {
+    let lo = 0, hi = 4000000;
+    for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (RK.rankAt(mid).index >= i) hi = mid; else lo = mid; }
+    const xp = Math.round(hi);
+    line(`   RANK ${String(i).padStart(2)} ${RK.rankAt(xp).name.padEnd(9)} ${xp.toLocaleString().padStart(9)} xp ` +
+         `≈ ${(xp / RUN).toFixed(0)} strong runs`);
+  }
 }

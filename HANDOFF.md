@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v18` — **bump on every code change** |
+| **Service worker** | `jr3d-v19` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -41,11 +41,44 @@ Traffic became fuel rather than obstacle — the same inversion that turns Doom
 Eternal's demons into ammo. **A crash bills heat, so a hot player survives
 mistakes that kill a cold one: aggression is the safe play.**
 
+### Then, on the same day: SECTORS, CHAIN and RANK
+
+The heat loop fixed *the racing*; it did not make a **game**. A run was still a
+flat, nameless drive until you died, and there was nothing to say afterwards and
+no reason to start a second one. Three additions, each aimed at a different gap:
+
+- **SECTORS** (`src/stages.js`) give a run its shape. Eight named, announced,
+  distance-gated chapters — COAST RUN → RUSH HOUR → NIGHTFALL → WRONG WAY → AIR
+  PATROL → GRIDLOCK → BLACKOUT → RED LINE, then endless OVERLOAD N. Each rewrites
+  the rules (night level, opposing lane, cops, density). Distance-gated on
+  purpose: driving hot advances you through the game faster. **"I reached
+  BLACKOUT" is a sentence; "I scored 41,880" is not.**
+- **CHAIN** is the skill ceiling. Every risk — a shave, a HELD slipstream, a
+  landed jump, a canister, a smash — links it, and it multiplies both the heat
+  those risks pay and the score they earn. A crash resets it to nothing. In the
+  harness, two runs of the *same bot* in the *same world* differ 4× in score
+  purely on chain preservation (chain 132 → 41k, chain 6 → 9k).
+- **RANK** (`src/rank.js`) is the reason to press PLAY AGAIN. Lifetime score buys
+  12 ranks, ROOKIE → JOSHUA. Deliberately NOT a power-up — an arcade leaderboard
+  has to compare like with like — it is a title, shown on the title screen and
+  celebrated on the result screen.
+
+The result screen is now the shareable artefact: sector reached as the headline,
+grade, score, rank bar with a rank-up flash, and eight stats.
+
 ---
 
 ## 1. Open items (start here)
 
-1. **🟠 The HEAT redesign has not been PLAYED, only observed.** Verified: it boots
+1. **🟠 Still not PLAYED, only observed.** Verified in-browser: boots clean, the
+   sector banner fires and reads, the sector HUD tracks, the result screen lays
+   out correctly at 800×450, rank shows on the title. Fixed during that pass: the
+   sector banner was invisible against a bright sky (now sits on a dark band), and
+   the rank row collided with itself. **Still unseen in motion: OVERDRIVE, the
+   flameout death, a long chain, and sectors 2+ arriving naturally** — the preview
+   pane composites too slowly to drive that far. Balance is from
+   `tools/heattest.mjs`, not hands on it.
+2. **🟠 The HEAT redesign itself has not been PLAYED either.** Verified: it boots
    clean, the HUD is right, heat visibly drains while coasting, the multiplier and
    speed track it, and all game-over element ids resolve. Fixed during that pass:
    the DASH pad was inheriting `#steer-controls button` (40% wide, 64px font) and
@@ -139,6 +172,8 @@ src/
   audio.js        procedural Web Audio: gearbox engine + SFX + heli rotor (one channel + toggle)
   music.js        MP3 music bed (loop, mute, pause/resume)
   heat.js         THE CORE LOOP — one resource: speed + score + life + density
+  stages.js       SECTORS — the named, distance-gated chapters a run moves through
+  rank.js         lifetime XP → 12 ranks (persistent; deliberately not a power-up)
   scoring.js      score accumulator + localStorage hi-score (distance × heat mult)
   hud.js          DOM HUD, tach/gear, popups, pip meter, game-over panel + letter grade
   ui.js           menu overlay manager (title/name/leaderboard/tutorial/paused) + lb render
@@ -242,6 +277,9 @@ Everything numeric lives in **`src/config.js`**.
 
 | What | Where | Notes |
 |---|---|---|
+| Sectors | `src/stages.js` `SECTORS` | distance thresholds + per-sector night/oncoming/cops/density. Endless past the table |
+| Chain | `CHAIN` | `window` 3.2s to lapse, `cap` 30 × `step` 0.04 → ×2.2 max, `draftMin` 0.45s to count a slipstream |
+| Ranks | `src/rank.js` `RANKS` | cumulative lifetime score thresholds |
 | **THE WHOLE GAME** | `HEAT` | `drainBase`/`drainScale` set how long coasting buys you; `nearMiss`, `draftRate`/`draftRange`, `airRate`, `canister` are the refills; `crash` (0.45) is why hot = safe; `speedFloor` (0.60) **must** stay above the fastest traffic or cold becomes a death spiral |
 | Dash | `DASH` | 195 u/s for 0.24s ≈ 2.2 lanes, 0.45s cooldown |
 | Traffic amount | `SPAWN_ROW_GAP` (80) + `HEAT.densityMul` | cars/row is 2 + up to ~2.7 more with heat |
@@ -298,7 +336,8 @@ const { makePlayer, updatePlayer } = await imp("entities/player.js");
 **Always** `node --check` every changed file first — it catches typos in seconds. The headless path
 now also covers the opposing lane, nitro, ramps and the jump arc — see the pattern in §6A below.
 
-**§6B. `node tools/heattest.mjs`** — the BALANCE harness, and the most important
+**§6B. `node tools/heattest.mjs`** — the BALANCE harness (sections G and H also
+print the sector ladder with reach-times and the rank ladder in runs-to-title), and the most important
 test in the repo, because the design claim *is* a set of numbers. It measures:
 how long coasting buys you; what shave rate holds a given heat; that a crash at
 95% is survivable and at 35% is fatal; that a stone-cold car still out-runs the

@@ -93,7 +93,18 @@
     #go-new { display: none; font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #ffd24a; }
     .go-score { font-size: 46px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
     .go-sub { font-size: 12px; opacity: 0.7; letter-spacing: 1px; }
-    .go-stats { display: flex; justify-content: space-around; gap: 8px; margin-top: 6px; }
+    .go-sector { font-size: 12px; letter-spacing: 4px; opacity: 0.75; margin-bottom: 2px; }
+    .go-sector b { color: #ffc247; font-size: 20px; letter-spacing: 2px; display: block; margin-top: 3px; }
+    .go-sector span { display: block; font-size: 10px; letter-spacing: 3px; opacity: 0.5; }
+    .go-rank { margin: 9px auto 2px; width: 92%; }
+    .go-rank-row { display: flex; justify-content: space-between; align-items: baseline;
+      gap: 10px; font-size: 11px; letter-spacing: 1px; white-space: nowrap; }
+    #go-rank-name { color: #9be7ff; font-weight: 800; }
+    #go-rank-name .up { color: #5ef08a; }
+    #go-rank-next { opacity: 0.55; font-size: 10px; letter-spacing: 0.5px; }
+    .go-rank-track { height: 5px; margin-top: 4px; border-radius: 3px; background: rgba(255,255,255,0.14); overflow: hidden; }
+    #go-rank-bar { height: 100%; width: 0%; background: linear-gradient(90deg,#9be7ff,#5ef08a); border-radius: 3px; }
+    .go-stats { display: flex; justify-content: space-around; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
     .go-stat { font-size: 11px; letter-spacing: 1px; opacity: 0.85; }
     .go-stat b { display: block; font-size: 15px; font-weight: 800; margin-top: 3px; opacity: 1; }
     #go-again { margin-top: 8px; font: inherit; font-size: 15px; font-weight: 800; letter-spacing: 1px;
@@ -129,6 +140,33 @@
       0%,100% { box-shadow: 0 0 0 rgba(255,60,90,0); border-color: rgba(255,90,120,0.4); }
       50% { box-shadow: 0 0 22px rgba(255,60,90,0.95); border-color: rgba(255,120,140,1); }
     }
+    /* Sector readout: which chapter of the run you are in, and how far through. */
+    #sector-hud { position: absolute; top: calc(env(safe-area-inset-top) + 42px); left: 50%;
+      transform: translateX(-50%); width: 190px; text-align: center;
+      font-size: 11px; letter-spacing: 3px; opacity: 0.9; }
+    #sector-name { color: #ffc247; font-weight: 800; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
+    #sector-dist { display: block; font-size: 10px; letter-spacing: 2px; margin-top: 2px;
+      color: #e8e2d6; opacity: 0.8; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
+    #sector-track { height: 3px; margin-top: 4px; border-radius: 2px; background: rgba(255,255,255,0.14); overflow: hidden; }
+    #sector-bar { height: 100%; width: 0%; background: #ffc247; border-radius: 2px; }
+
+    /* The sector announcement — the beat that gives a run its chapters. */
+    #sector-banner { position: fixed; inset: 0; z-index: 30; pointer-events: none;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.35s ease; text-align: center;
+      /* A dark band behind the text. Without it the announcement is invisible
+         against a bright dusk sky — white-on-pale simply does not read. */
+      background: linear-gradient(to bottom, transparent 33%, rgba(5,7,13,0.80) 39%,
+                  rgba(5,7,13,0.80) 61%, transparent 67%); }
+    #sector-banner.show { opacity: 1; }
+    #sector-banner-idx { font-size: 13px; letter-spacing: 8px; color: #ffc247;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
+    #sector-banner-name { font-size: 54px; font-weight: 900; letter-spacing: 4px; color: #fff;
+      text-shadow: 0 0 30px rgba(255,170,60,0.9), 0 3px 0 rgba(0,0,0,0.85), 0 6px 20px rgba(0,0,0,0.95);
+      margin: 4px 0 2px; }
+    #sector-banner-sub { font-size: 13px; letter-spacing: 5px; color: #e8e2d6;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
+
     #mult { position: absolute; top: calc(env(safe-area-inset-top) + 40px); left: calc(env(safe-area-inset-left) + 14px);
       font-size: 20px; font-weight: 800; letter-spacing: 1px; color: #ffc247;
       text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
@@ -344,7 +382,9 @@
     <div id="passed">PASSED 0</div>
     <div id="coins-hud">🪙 0</div>
     <div id="score">0</div>
-    <div id="combo"><div class="lab">COMBO</div><div id="combo-n">×2</div><div id="combo-track"><div id="combo-bar"></div></div></div>
+    <div id="sector-hud"><span id="sector-name">COAST RUN</span><span id="sector-dist">0 m</span>
+      <div id="sector-track"><div id="sector-bar"></div></div></div>
+    <div id="combo"><div class="lab">CHAIN</div><div id="combo-n">×2</div><div id="combo-track"><div id="combo-bar"></div></div></div>
     <div id="nearmiss">NEAR MISS +100</div>
     <div id="rampage-msg">RAMPAGE!</div>
     <div id="heat">
@@ -356,6 +396,12 @@
       <span id="speed">0</span><br><span id="speed-unit">KM/H</span>
       <div id="gear-row">GEAR <b id="gear">1</b></div>
     </div>
+  </div>
+
+  <div id="sector-banner" aria-hidden="true">
+    <div id="sector-banner-idx">SECTOR 1</div>
+    <div id="sector-banner-name">COAST RUN</div>
+    <div id="sector-banner-sub">warm up</div>
   </div>
 
   <div id="popups" aria-hidden="true"></div>
@@ -404,10 +450,15 @@
   <div id="gameover" role="dialog" aria-label="Game over">
     <div class="go-box">
       <div class="go-title">GAME OVER</div>
+      <div class="go-sector">REACHED <b id="go-sector">COAST RUN</b><span id="go-sector-idx">SECTOR 1</span></div>
       <div class="go-grade"><span class="go-grade-letter" id="go-grade-letter">S</span><span class="go-grade-qual" id="go-grade-qual"></span></div>
       <div id="go-new">NEW RECORD!</div>
       <div class="go-score" id="go-score">0</div>
       <div class="go-sub">BEST <span id="go-best">0</span></div>
+      <div class="go-rank">
+        <div class="go-rank-row"><span id="go-rank-name">ROOKIE</span><span id="go-rank-next"></span></div>
+        <div class="go-rank-track"><div id="go-rank-bar"></div></div>
+      </div>
       <div class="go-stats">
         <div class="go-stat">PASSED<b id="go-passed">0</b></div>
         <div class="go-stat">COINS<b id="go-coins">0</b></div>
@@ -416,6 +467,8 @@
         <div class="go-stat">NITRO<b id="go-nitro">0</b></div>
         <div class="go-stat">BEST AIR<b id="go-air">0.0S</b></div>
         <div class="go-stat">PEAK HEAT<b id="go-peak">0%</b></div>
+        <div class="go-stat">BEST CHAIN<b id="go-chain">0</b></div>
+        <div class="go-stat">DISTANCE<b id="go-dist">0 m</b></div>
       </div>
       <button id="go-again">PLAY AGAIN</button>
       <div class="go-actions">

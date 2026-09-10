@@ -2,7 +2,7 @@
 // lives, pass count, speed, combo banner, near-miss flash, crash flash, the
 // RAMPAGE pip meter + banner + tint, and the game-over panel. main.js feeds it
 // state each frame.
-import { PHYS, RACE, GRADES } from "./config.js";
+import { PHYS, RACE, GRADES, CHAIN } from "./config.js";
 import { TIERS } from "./heat.js";
 
 // Letter grade for a final score — GRADES is sorted high→low by min-score.
@@ -15,6 +15,9 @@ export function makeHud(onPlayAgain) {
   const el = (id) => document.getElementById(id);
   const scoreEl = el("score"), multEl = el("mult"), passedEl = el("passed"), speedEl = el("speed"), coinsEl = el("coins-hud");
   const heatEl = el("heat"), heatFill = el("heat-fill"), heatTier = el("heat-tier");
+  const secName = el("sector-name"), secDist = el("sector-dist"), secBar = el("sector-bar");
+  const banner = el("sector-banner"), bIdx = el("sector-banner-idx"),
+    bName = el("sector-banner-name"), bSub = el("sector-banner-sub");
   const tachEl = el("tach"), tachFill = el("tach-fill"), gearEl = el("gear");
   const comboEl = el("combo"), comboN = el("combo-n"), comboBar = el("combo-bar");
   const nearmissEl = el("nearmiss"), crashEl = el("crash-flash");
@@ -22,7 +25,9 @@ export function makeHud(onPlayAgain) {
   const goPanel = el("gameover"), goScore = el("go-score"), goBest = el("go-best"),
     goNew = el("go-new"), goPassed = el("go-passed"), goTime = el("go-time"),
     goTop = el("go-top"), goBtn = el("go-again"), goCoins = el("go-coins"),
-    goNitro = el("go-nitro"), goAir = el("go-air"),
+    goNitro = el("go-nitro"), goAir = el("go-air"), goChain = el("go-chain"),
+    goDist = el("go-dist"), goSector = el("go-sector"), goSectorIdx = el("go-sector-idx"),
+    goRankName = el("go-rank-name"), goRankNext = el("go-rank-next"), goRankBar = el("go-rank-bar"),
     goGradeLetter = el("go-grade-letter"), goGradeQual = el("go-grade-qual"),
     goPeak = el("go-peak");
   const popupsEl = el("popups");
@@ -40,6 +45,20 @@ export function makeHud(onPlayAgain) {
     setTimeout(() => { d.remove(); }, 1000);
   }
   function clearPopups() { if (popupsEl) popupsEl.innerHTML = ""; }
+
+  // The sector announcement — held long enough to read, then faded. This is the
+  // beat that turns "driving until I die" into "I made it to BLACKOUT".
+  let bannerTimer = null;
+  function sector(s) {
+    if (!banner) return;
+    if (bIdx) bIdx.textContent = "SECTOR " + s.index;
+    if (bName) bName.textContent = s.name;
+    if (bSub) bSub.textContent = s.sub;
+    banner.classList.add("show");
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => banner.classList.remove("show"), 1900);
+  }
+  function clearSector() { if (banner) banner.classList.remove("show"); clearTimeout(bannerTimer); }
 
   const fmt = (n) => Math.floor(n).toLocaleString();
 
@@ -63,13 +82,17 @@ export function makeHud(onPlayAgain) {
     }
     if (gearEl) gearEl.textContent = s.gear || 1;
 
+    // CHAIN: the count is the brag, the bar is the clock you are racing.
     if (comboEl) {
-      if (s.combo >= 2) {
+      if (s.chain >= 2) {
         comboEl.classList.add("show");
-        if (comboN) comboN.textContent = "×" + s.combo;
-        if (comboBar) comboBar.style.width = (Math.max(0, Math.min(1, s.comboTimer / RACE.comboWindow)) * 100) + "%";
+        if (comboN) comboN.textContent = "×" + s.chain;
+        if (comboBar) comboBar.style.width = (Math.max(0, Math.min(1, s.chainTimer / CHAIN.window)) * 100) + "%";
       } else comboEl.classList.remove("show");
     }
+    if (secName) secName.textContent = s.sectorName || "";
+    if (secDist) secDist.textContent = Math.floor(s.dist || 0).toLocaleString() + " m";
+    if (secBar) secBar.style.width = (Math.max(0, Math.min(1, s.sectorProgress || 0)) * 100).toFixed(1) + "%";
     if (nearmissEl) nearmissEl.style.opacity = s.nearMissTimer > 0 ? Math.min(1, s.nearMissTimer / 0.8).toFixed(2) : 0;
     if (crashEl) crashEl.style.opacity = (s.crashFlash > 0 ? Math.min(0.55, s.crashFlash) : 0).toFixed(3);
 
@@ -113,11 +136,25 @@ export function makeHud(onPlayAgain) {
     if (goTime) goTime.textContent = Math.floor(g.time) + "S";
     if (goTop) goTop.textContent = g.topSpeed + " KM/H";
     if (goPeak) goPeak.textContent = Math.round((g.peakHeat || 0) * 100) + "%";
+    if (goChain) goChain.textContent = g.chainBest || 0;
+    if (goDist) goDist.textContent = Math.floor(g.dist || 0).toLocaleString() + " m";
+    // The sector is the headline — the one line of a run worth repeating.
+    if (goSector) goSector.textContent = g.sectorName || "COAST RUN";
+    if (goSectorIdx) goSectorIdx.textContent = "SECTOR " + (g.sector || 1);
+    const r = g.rank;
+    if (r) {
+      if (goRankName) {
+        goRankName.innerHTML = "RANK " + r.index + " · " + r.name +
+          (g.rankedUp ? ' <span class="up">▲ UP</span>' : "");
+      }
+      if (goRankNext) goRankNext.textContent = r.atTop ? "MAX RANK" : (r.need - r.into).toLocaleString() + " → " + r.nextName;
+      if (goRankBar) goRankBar.style.width = (r.progress * 100).toFixed(1) + "%";
+    }
     if (goNitro) goNitro.textContent = g.nitros || 0;
     if (goAir) goAir.textContent = (g.bestAir || 0).toFixed(1) + "S";
     if (goPanel) goPanel.classList.add("show");
   }
   function hideGameOver() { if (goPanel) goPanel.classList.remove("show"); }
 
-  return { update, showGameOver, hideGameOver, popup, clearPopups };
+  return { update, showGameOver, hideGameOver, popup, clearPopups, sector, clearSector };
 }

@@ -3,7 +3,9 @@
 // plus an online LEADERBOARD reachable from the title and game-over. The 3D world
 // keeps animating as a live attract scene behind the menus.
 import * as THREE from "three";
-import { PHYS, STEER, SCORE, RACE, ONCOMING, NITRO, JUMP, NIGHT, HEAT } from "./config.js";
+import { PHYS, STEER, SCORE, RACE, ONCOMING, NITRO, JUMP, NIGHT, HEAT, CHAIN } from "./config.js";
+import { sectorIndexAt, sectorAt, nextSectorZ, sectorStartZ } from "./stages.js";
+import { currentRank, bankRun } from "./rank.js";
 import {
   makeHeat, addHeat, updateHeat, heatSpeed01, heatScoreMul, heatDensity, tierOf, TIERS,
 } from "./heat.js";
@@ -73,6 +75,9 @@ let cops = makeCopsSystem();
 const copsView = makeCopsView(scene, road);
 let densityMul = 1;
 
+// SECTORS — the run's shape. Distance-gated, so driving hot advances you faster.
+let sectorIdx = 1, sector = sectorAt(1), sectorBest = 1;
+
 // HEAT — the one resource the game runs on. See src/heat.js for why.
 const heat = makeHeat();
 let draftT = 0, draftStreak = 0, dashCount = 0;
@@ -88,7 +93,9 @@ let attractT = 0;                 // attract-mode auto-weave phase
 let playerName = getPlayerName();
 
 const score = makeScoreState();
-let combo = 0, comboTimer = 0, comboBest = 0, nearMissTimer = 0, crashFlash = 0;
+// CHAIN — every risk links it, a crash breaks it, and it multiplies both the
+// heat those risks pay and the score they earn.
+let chain = 0, chainTimer = 0, chainBest = 0, nearMissTimer = 0, crashFlash = 0;
 let raceTime = 0, topSpeedKmh = 0, coinsCollected = 0, nitrosGrabbed = 0, bestAir = 0;
 // Nightfall (0 = the locked warm dusk, 1 = full night). Only advances while
 // RACING, so every menu keeps the dusk hero shot the project is art-directed to.
@@ -99,7 +106,7 @@ let heliSoundOn = false;
 // Juice: milestone callouts + camera shake.
 const SPEED_MILESTONES = [120, 150, 180, 200];
 let speedMsIdx = 0;             // next speed milestone to fire
-const comboMsHit = new Set();   // combo milestones already celebrated this run
+const chainMsHit = new Set();   // chain milestones already celebrated this run
 const _shake = { x: 0, y: 0 };
 let lastGear = 1;               // for upshift detection (thud + kick)
 
@@ -157,17 +164,19 @@ function resetWorld() {
   nightT = 0;
   cops = makeCopsSystem();
   startScoring(score, 0);
-  combo = 0; comboTimer = 0; comboBest = 0; nearMissTimer = 0; crashFlash = 0;
+  chain = 0; chainTimer = 0; chainBest = 0; nearMissTimer = 0; crashFlash = 0;
+  sectorIdx = 1; sector = sectorAt(1); sectorBest = 1;
   raceTime = 0; topSpeedKmh = 0;
   rampageMsg = ""; rampageMsgTimer = 0;
   densityMul = 1;
   attractT = 0;
   applyNight(0);
-  speedMsIdx = 0; comboMsHit.clear();
+  speedMsIdx = 0; chainMsHit.clear();
   clearSteer();            // drop any latched steer so a new run starts straight
   chase.snap();            // camera jumps to behind the car (no glide-in from old z)
   juice.resetJuice();
   hud.clearPopups();
+  hud.clearSector();
 }
 
 // ── State transitions ──
@@ -176,7 +185,9 @@ function goTitle() {
   if (heliSoundOn) { stopHeliSound(); heliSoundOn = false; }
   resetWorld();                                 // fresh, populated attract scene
   const best = bestEverScore();
-  ui.setTitleBest(best ? "BEST " + best.toLocaleString() : "");
+  const r = currentRank();
+  ui.setTitleBest(
+    "RANK " + r.index + " · " + r.name + (best ? "   —   BEST " + best.toLocaleString() : ""));
   resumeAudio(); resumeMusic();                 // ambient music on the title
   setState(STATE.TITLE);
 }
@@ -184,6 +195,7 @@ function goTitle() {
 function beginRace() {
   resetWorld();
   setState(STATE.RACE);
+  hud.sector(sector);
   setEngineRampage(false); startEngine();        // safe no-op if audio isn't booted
   resumeMusic();
 }
@@ -209,13 +221,30 @@ function openLeaderboard(returnTo) {
 }
 function closeLeaderboard() { setState(lbReturnTo || STATE.TITLE); }
 
+// The multiplier the chain is currently worth. Applied to BOTH heat gains and
+// score bonuses, so a long chain makes you faster, richer and harder to kill at
+// the same time — and makes the crash that ends it genuinely expensive.
+function chainMul() { return 1 + Math.min(chain, CHAIN.cap) * CHAIN.step; }
+
+// Link the chain. Every risk in the game funnels through here.
+function linkChain(quiet) {
+  chain += 1;
+  chainBest = Math.max(chainBest, chain);
+  chainTimer = CHAIN.window;
+  if (!quiet && CHAIN.milestones.includes(chain) && !chainMsHit.has(chain)) {
+    chainMsHit.add(chain);
+    hud.popup("CHAIN ×" + chain, "combo", chain >= 30);
+    juice.addShake(0.18);
+    sfxCombo(Math.min(12, chain));
+  }
+}
+
 function registerSmash() {
-  combo += 1; comboBest = Math.max(comboBest, combo);
-  comboTimer = RACE.comboWindow;
-  score.score += SCORE.smashBonus * combo;
-  sfxCombo(combo);
+  linkChain();
+  score.score += SCORE.smashBonus * chain;
+  sfxCombo(Math.min(12, chain));
   juice.hitStop(0.035); juice.addShake(0.14);
-  hud.popup("SMASH ×" + combo, "smash");
+  hud.popup("SMASH ×" + chain, "smash");
 }
 
 // Take a life-costing hit (traffic crash or flaming barrel). Returns true if the
@@ -226,7 +255,10 @@ function registerSmash() {
 // the run ends when you have nothing left to spend, not when a counter hits zero.
 function takeHit(severity, invulnSec) {
   applyCollisionLoss(player, severity, invulnSec);
-  combo = 0; comboTimer = 0;
+  // The chain is the real casualty of a crash — more than the heat, that is what
+  // the player mourns, and what makes them drive better next time.
+  if (chain >= 8) hud.popup("CHAIN LOST (" + chain + ")", "crash");
+  chain = 0; chainTimer = 0;
   crashFlash = 0.5;
   player.steerVis = 0; player.steerSmooth = 0; player.vx = 0; player.slip = 0;
   player.dashT = 0;                               // a crash cancels a dash outright
@@ -240,6 +272,7 @@ function takeHit(severity, invulnSec) {
 
 function endRun() {
   const isNew = finalizeScore(score);
+  const banked = bankRun(score.score);
   setEngineRampage(false); stopEngine();
   if (heliSoundOn) { stopHeliSound(); heliSoundOn = false; }
   sfxGameOver();
@@ -248,6 +281,8 @@ function endRun() {
     passed: traffic.passedCount, time: raceTime, topSpeed: topSpeedKmh, coins: coinsCollected,
     nitros: nitrosGrabbed, bestAir, night: nightT,
     peakHeat: heat.peak, draftT, dashes: dashCount,
+    sector: sectorBest, sectorName: sectorAt(sectorBest).name,
+    chainBest, dist: player.z, rank: banked.rank, rankedUp: banked.rankedUp,
   };
   hud.showGameOver(run);
   setState(STATE.GAMEOVER);
@@ -344,8 +379,9 @@ function applyNight(n) {
 // Touchdown after a ramp jump — air time is the score, and the longer it was the
 // harder the landing lands.
 function onLanded(air) {
-  const gain = Math.round(JUMP.airScorePerSec * air);
+  const gain = Math.round(JUMP.airScorePerSec * air * chainMul());
   score.score += gain;
+  linkChain();
   bestAir = Math.max(bestAir, air);
   sfxLand();
   juice.addShake(JUMP.landShake * (0.6 + 0.5 * Math.min(1, air)));
@@ -389,18 +425,22 @@ function stepRace(dt) {
   updatePlayer(player, dt, input, { onFenceBump: sfxBump, onLand: onLanded });
   raceTime += dt;
 
-  // NIGHTFALL — a one-way grade from the locked warm dusk into full night, after
-  // a short grace period so the opening frames are still the art-directed look.
-  if (raceTime > NIGHT.startAfter) nightT = Math.min(1, (raceTime - NIGHT.startAfter) / NIGHT.fallSeconds);
-
-  // The opposing carriageway opens. Announced hard, because it silently changes
-  // the rule of an entire lane the player has spent half a minute using freely.
-  if (!traffic.oncomingOn && raceTime >= ONCOMING.startSeconds) {
-    startOncoming(traffic, player.z);
-    hud.popup("ONCOMING TRAFFIC!", "milestone", true);
-    rampageMsg = "LEFT LANE IS NOW TWO-WAY"; rampageMsgTimer = 2.6;
-    sfxAlert(); juice.addShake(0.25);
+  // ── SECTORS ── Distance-gated, so running hot moves you through the game
+  // faster. Each one announces itself and rewrites the rules; the sector you
+  // reached is the headline of the result screen.
+  const idxNow = sectorIndexAt(player.z);
+  if (idxNow !== sectorIdx) {
+    sectorIdx = idxNow;
+    sector = sectorAt(idxNow);
+    sectorBest = Math.max(sectorBest, idxNow);
+    hud.sector(sector);
+    sfxAlert(); juice.addShake(0.3);
+    addHeat(heat, HEAT.sectorBonus);              // a clean top-up for getting here
+    if (sector.oncoming && !traffic.oncomingOn) startOncoming(traffic, player.z);
   }
+  // Nightfall eases toward whatever the sector asks for, rather than running off
+  // a wall-clock — so the world darkens because you got further, not older.
+  nightT += (sector.night - nightT) * Math.min(1, dt * NIGHT.easeRate);
   const kmhNow = Math.round(player.speed / PHYS.maxSpeed * PHYS.topSpeedKmh);
   if (kmhNow > topSpeedKmh) topSpeedKmh = kmhNow;
   while (speedMsIdx < SPEED_MILESTONES.length && topSpeedKmh >= SPEED_MILESTONES[speedMsIdx]) {
@@ -413,7 +453,7 @@ function stepRace(dt) {
   // are playing: run hot and the road fills up, which is simultaneously more fuel
   // and more danger. That is what stops a hot streak from becoming a free ride,
   // and it means the difficulty curve is authored by the player, not by a timer.
-  densityMul = heatDensity(heat);
+  densityMul = heatDensity(heat) * sector.density;
   player.throttle01 = heatSpeed01(heat);
   // Tension/release: breathe the row spacing on a slow cycle (surge → breather →
   // surge) so the difficulty has rhythm instead of a flat grind. Gap lane stays
@@ -422,12 +462,12 @@ function stepRace(dt) {
   traffic.rowGapZ = (SPAWN_ROW_GAP / densityMul) * wave;
   traffic.densityMul = densityMul;
 
-  // Traffic sim + scoring (pass bonus ×combo; near-miss two tiers).
+  // Traffic sim + scoring (pass bonus ×chain; near-miss two tiers).
   updateTraffic(traffic, dt, player.z, {
     playerX: player.x,
     playerY: player.y,
     onPassed: () => {
-      score.score += SCORE.passBonus * Math.max(1, combo);
+      score.score += SCORE.passBonus * Math.max(1, chain);
 
     },
     onNearMiss: (tightness = 0, car2 = null) => {
@@ -440,26 +480,19 @@ function stepRace(dt) {
       if (headOn) { sfxHorn(); juice.addShake(0.16); }
       // FUEL. A shave is the main way heat goes back in — tighter pays more, and
       // a head-on shave in the opposing lane is the richest source in the game.
-      addHeat(heat, (HEAT.nearMiss + HEAT.nearMissTight * tightness) * (headOn ? HEAT.oncomingMul : 1));
+      addHeat(heat, (HEAT.nearMiss + HEAT.nearMissTight * tightness) * (headOn ? HEAT.oncomingMul : 1) * chainMul());
+      linkChain();
       // A tight shave rewards skill: a micro-freeze that punctuates the moment,
       // and a PERFECT! callout on the closest ones.
       if (tightness >= 0.55) { juice.hitStop(0.05); juice.addShake(0.14); }
       const perfect = tightness >= 0.7;
-      if (kmh >= RACE.comboKmh) {                  // NEAR MISS COMBO territory
-        combo += 1; comboBest = Math.max(comboBest, combo);
-        comboTimer = RACE.comboWindow;
-        const gain = Math.round(SCORE.nearMissBonus * combo * precision);
+      if (kmh >= RACE.comboKmh) {                  // fast enough to pay properly
+        const gain = Math.round(SCORE.nearMissBonus * chain * precision);
         score.score += gain;
-        sfxCombo(combo);
         juice.addShake(0.05);
         const label = headOn ? "HEAD-ON! +" + gain : perfect ? "PERFECT! +" + gain : "+" + gain;
         hud.popup(label, headOn ? "headon" : perfect ? "perfect" : "nearmiss", perfect || headOn);
-        if (combo >= 5 && combo % 5 === 0 && !comboMsHit.has(combo)) {
-          comboMsHit.add(combo);
-          hud.popup("COMBO ×" + combo + "!", "combo", true);
-          juice.addShake(0.22);
-        }
-      } else {                                     // discreet flat bonus, no combo
+      } else {                                     // discreet flat bonus
         score.score += Math.round(SCORE.nearMissBonus * precision);
         nearMissTimer = 0.8;
         if (headOn) hud.popup("HEAD-ON!", "headon");
@@ -471,7 +504,7 @@ function stepRace(dt) {
 
 
   // Police helicopter — flies in above copTriggerKmh and drops flaming barrels.
-  updateCops(cops, dt, player.z, player.x, player.speed, { onDrop: sfxBarrelDrop });
+  if (sector.cops) updateCops(cops, dt, player.z, player.x, player.speed, { onDrop: sfxBarrelDrop });
   const helisOn = cops.active && cops.helis.length > 0;
   if (helisOn && !heliSoundOn) { startHeliSound(); heliSoundOn = true; }
   else if (!helisOn && heliSoundOn) { stopHeliSound(); heliSoundOn = false; }
@@ -529,7 +562,8 @@ function stepRace(dt) {
   const gotNitro = checkNitroGrab(traffic, playerBox(player), player.y);
   if (gotNitro) {
     nitrosGrabbed += gotNitro;
-    addHeat(heat, HEAT.canister * gotNitro);
+    addHeat(heat, HEAT.canister * gotNitro * chainMul());
+    linkChain();
     score.score += gotNitro * NITRO.value;
     sfxNitro();
     juice.addShake(0.12);
@@ -547,10 +581,12 @@ function stepRace(dt) {
     draftStreak += dt;
     addHeat(heat, HEAT.draftRate * draft.closeness * dt);
   } else if (draftStreak > 0) {
-    if (draftStreak > 0.5) hud.popup("SLIPSTREAM", "nitro");
+    // A slipstream only LINKS if you actually held it — leaning on someone's
+    // bumper for a moment is the risk; brushing past them is not.
+    if (draftStreak > CHAIN.draftMin) { hud.popup("SLIPSTREAM", "nitro"); linkChain(); }
     draftStreak = 0;
   }
-  if (player.airborne) addHeat(heat, HEAT.airRate * dt);
+  if (player.airborne) addHeat(heat, HEAT.airRate * chainMul() * dt);
 
   const hev = {};
   updateHeat(heat, dt, hev);
@@ -575,7 +611,7 @@ function stepRace(dt) {
   if (heat.dead) { endRun(); return; }
 
   // Combo decay (a lapsed chain dumps the meter), flash timers.
-  if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 0; }
+  if (chainTimer > 0) { chainTimer -= dt; if (chainTimer <= 0) chain = 0; }
   if (nearMissTimer > 0) nearMissTimer = Math.max(0, nearMissTimer - dt);
   if (crashFlash > 0) crashFlash = Math.max(0, crashFlash - dt);
   if (rampageMsgTimer > 0) rampageMsgTimer = Math.max(0, rampageMsgTimer - dt);
@@ -663,7 +699,10 @@ function render() {
   environment.follow(camera);
   hud.update({
     score: score.score, passed: traffic.passedCount, coins: coinsCollected,
-    speed01, combo, comboTimer, nearMissTimer, crashFlash, ...gearAt(speed01),
+    speed01, chain, chainTimer, chainMul: chainMul(), nearMissTimer, crashFlash, ...gearAt(speed01),
+    sectorIdx, sectorName: sector.name,
+    sectorProgress: (player.z - sectorStartZ(sectorIdx)) / Math.max(1, nextSectorZ(sectorIdx) - sectorStartZ(sectorIdx)),
+    dist: player.z,
     rampageActive: heat.overdrive, rampageMsg, rampageMsgTimer,
     heat: heat.v, heatTier: heat.tier, overdrive: heat.overdrive,
     flameout: heat.flameout, drafting: state === STATE.RACE && draftStreak > 0,
