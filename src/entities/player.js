@@ -2,7 +2,7 @@
 // rubber-fence edges. PORTED from the 2D reference (src/entities/player.js); the
 // drawing is gone (render3d/models.js owns that). `x` is the lateral offset from
 // the road CENTERLINE — pure scalar, so the curve never touches this math.
-import { PHYS, ROAD, JUMP, DASH } from "../config.js";
+import { PHYS, ROAD, JUMP, DASH, NOS, DRIFT } from "../config.js";
 
 export function makePlayer() {
   return {
@@ -14,6 +14,12 @@ export function makePlayer() {
     airborne: false,
     speed: PHYS.startSpeed,
     throttle01: 0.6, // target speed as a fraction of top — written by the HEAT model
+    nosOn: false,    // is the player holding nitrous AND is there heat to burn
+    nos: 0,          // 0..1 spool level (eased, so NOS punches rather than snaps)
+    drifting: false, // mid-slide
+    driftT: 0,       // seconds of the current slide
+    driftSum: 0,     // integral of |slip| over it — "how hard", not just "how long"
+    driftGrace: 0,
     dashT: 0,        // remaining dash time
     dashCd: 0,       // dash cooldown
     dashDir: 0,
@@ -46,7 +52,14 @@ export function updatePlayer(p, dt, input, callbacks) {
   // main.js now writes p.throttle01 from the heat model every frame, so how fast
   // the car is moving is a direct readout of how hard you have been driving. The
   // accel/drag lag is deliberate: heat gains feel like they BUILD into speed.
-  const target = PHYS.maxSpeed * (p.throttle01 != null ? p.throttle01 : 0.6);
+  // NOS spools in and out rather than switching, so the burst has a shape.
+  const nosTarget = p.nosOn ? 1 : 0;
+  const nosRate = dt / Math.max(0.001, NOS.spool);
+  p.nos += Math.max(-nosRate, Math.min(nosRate, nosTarget - p.nos));
+  p.nos = Math.max(0, Math.min(1, p.nos));
+
+  const target = PHYS.maxSpeed * (p.throttle01 != null ? p.throttle01 : 0.6)
+    * (1 + (NOS.speedMul - 1) * p.nos);
   if (p.speed < target) p.speed = Math.min(target, p.speed + PHYS.accel * dt);
   else if (p.speed > target) p.speed = Math.max(target, p.speed - PHYS.drag * dt);
   if (p.speed < 4) p.speed = 4;
@@ -88,6 +101,43 @@ export function updatePlayer(p, dt, input, callbacks) {
     p.slip = Math.max(-1, Math.min(1, (targetVx - p.vx) / PHYS.steerSpeed));
   }
   p.x += p.vx * dt;
+
+  // ── DRIFT ── `slip` is already the gap between where the wheels point and
+  // where the mass is going, which is exactly what a slide IS. So scoring the
+  // drift needs no new physics and no new button: commit hard through a reversal
+  // and the car slides, and the slide is worth something.
+  const speedFrac2 = p.speed / PHYS.maxSpeed;
+  // Pinned against the barrier does not count: the wall zeroes vx anyway, and
+  // rewarding wall-riding is the opposite of rewarding control.
+  const sliding = Math.abs(p.vx) >= DRIFT.minVx && speedFrac2 >= DRIFT.minSpeed01
+    && !p.airborne && p.dashT <= 0 && p.edgeContact === 0;
+  if (sliding) {
+    p.driftGrace = DRIFT.graceSeconds;
+    if (!p.drifting) { p.drifting = true; p.driftT = 0; p.driftSum = 0; }
+  }
+  if (p.drifting) {
+    if (sliding) {
+      p.driftT += dt;
+      p.driftSum += (Math.abs(p.vx) / PHYS.steerSpeed) * dt;
+      // Pay out a long slide and keep going, rather than waiting for an end that
+      // may never come while the player is weaving hard through traffic.
+      if (p.driftT >= DRIFT.maxSeconds) {
+        const t = p.driftT, sum = p.driftSum;
+        p.driftT = 0; p.driftSum = 0;
+        if (callbacks?.onDriftEnd) callbacks.onDriftEnd(t, sum, true);
+      }
+    }
+    else {
+      // A brief dip below the threshold does not break a slide — otherwise every
+      // drift would end the instant the car crossed neutral mid-transition.
+      p.driftGrace -= dt;
+      if (p.driftGrace <= 0) {
+        const t = p.driftT, sum = p.driftSum;
+        p.drifting = false; p.driftT = 0; p.driftSum = 0;
+        if (callbacks?.onDriftEnd) callbacks.onDriftEnd(t, sum);
+      }
+    }
+  }
 
   // Rubber-fence edges — can't leave the asphalt; a fresh bump shaves speed once.
   const bound = ROAD.halfWidth - PHYS.carHalfWidth;
@@ -143,6 +193,9 @@ export function updatePlayer(p, dt, input, callbacks) {
 
   if (p.invuln > 0) p.invuln = Math.max(0, p.invuln - dt);
 }
+
+// Abandon any slide in progress without banking it — what a crash does to a drift.
+export function cancelDrift(p) { p.drifting = false; p.driftT = 0; p.driftSum = 0; p.driftGrace = 0; }
 
 // Fire the emergency hop. Refused mid-dash, on cooldown, or in the air; the
 // caller charges the heat only when this returns true.

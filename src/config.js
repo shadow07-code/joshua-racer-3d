@@ -243,6 +243,11 @@ export const HEAT = {
 
   // Zero-heat grace. Long enough for one desperate lunge at a car.
   flameoutSeconds: 4.0,
+  // How much heat you must genuinely claw back to escape the flameout clock.
+  // Without this, ANY positive gain reset it — and in dense traffic a grazing
+  // slipstream frame happens constantly, so the fire could never actually kill
+  // you. The emergency has to be escaped on purpose, not survived by accident.
+  flameoutClear: 0.04,
 
   // Overdrive — the old rampage, now earned continuously off the top of the bar.
   overdriveAt: 0.985,
@@ -280,4 +285,58 @@ export const CHAIN = {
   step: 0.04,              // → ×2.2 at the cap
   draftMin: 0.45,          // a slipstream must be HELD this long to link
   milestones: [10, 20, 30, 50, 75, 100],
+};
+
+// ── NOS ──────────────────────────────────────────────────────────────────────
+// The Underground verb. You HOLD it, it burns the heat bar, and the world goes
+// wide and streaky. Collapsing nitrous into the heat resource is the whole idea:
+// the bar that is your speed, your score and your life is also the bottle. Every
+// second on the button is a second stolen from staying alive, which makes "when
+// do I burn it" the most interesting decision in the game.
+export const NOS = {
+  burn: 0.115,             // heat per second while held (~1/3 of a full bar over 3s)
+  minHeat: 0.03,           // below this the bottle is dry
+  speedMul: 1.24,          // on top of whatever heat is already buying you
+  spool: 0.18,             // seconds to wind in/out — a punch, not a switch
+  fovKick: 20,             // degrees of extra FOV at full song
+  camBack: 9,              // extra chase distance
+  camDrop: 2.4,            // ... and lower, so the ground rushes
+  scorePerSec: 140,
+};
+
+// ── DRIFT ────────────────────────────────────────────────────────────────────
+// Underground scored the slide, so this does too — and it costs no new button,
+// because player.slip already measures exactly the right thing: the gap between
+// where the wheels point and where the mass is actually going. Hard reversals
+// through dense traffic produce it naturally, which means the weaving the game
+// is built on now READS as driving instead of dodging.
+export const DRIFT = {
+  // A drift is measured on LATERAL VELOCITY, not on slip. Slip is the gap
+  // between wheels and mass, which spikes for ~0.2s after a steering change and
+  // then — worse — pins high while you grind along the barrier, because the wall
+  // holds vx at zero. Scoring slip therefore paid out for wall-riding and gave
+  // nothing for committed driving. |vx| is the honest measure: it is high exactly
+  // while the car is genuinely crossing the road, and the fence kills it.
+  minVx: 42,               // of a ~73 u/s maximum — a committed cut, not a nudge
+  minSpeed01: 0.55,        // ... and only at real speed
+  // Drift pays SCORE handsomely and heat only modestly — on purpose. Sliding
+  // needs no traffic, so if it refilled the bar properly you could mash
+  // left-right down an empty lane forever and never engage the game. At this
+  // rate a pure slide still loses ground against decay: drifting EXTENDS a run,
+  // it cannot sustain one. Traffic remains the only real fuel.
+  heatPerSec: 0.075,
+  // 1400 paid ~770/s while sliding — more than the distance score at full heat,
+  // so mashing left-right down an empty road out-earned a skilled run. Drifting
+  // is a flourish on top of the loop, not a replacement for it.
+  scorePerSec: 260,
+  graceSeconds: 0.28,      // brief dips below `min` do not end the slide
+  // Slip only spikes while the mass is CATCHING UP with the wheels, so a slide
+  // here is naturally short — a committed direction change, not a long corner.
+  // 0.35s rejected almost every real one; 0.18 pays a committed cut and still
+  // ignores a twitch.
+  minBankSeconds: 0.18,
+  // A slide through dense traffic can otherwise run unbroken forever and never
+  // pay out at all — the better you drift, the less you got. Long slides bank
+  // on this interval and carry on, which also gives them a rhythm.
+  maxSeconds: 3.0,
 };

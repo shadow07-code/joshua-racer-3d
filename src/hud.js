@@ -21,11 +21,13 @@ export function makeHud(onPlayAgain) {
   const tachEl = el("tach"), tachFill = el("tach-fill"), gearEl = el("gear");
   const comboEl = el("combo"), comboN = el("combo-n"), comboBar = el("combo-bar");
   const nearmissEl = el("nearmiss"), crashEl = el("crash-flash");
+  const driftEl = el("drift"), driftT = el("drift-t"), nosBtn = el("btn-nos");
   const rampMsgEl = el("rampage-msg"), rampTintEl = el("rampage-tint");
   const goPanel = el("gameover"), goScore = el("go-score"), goBest = el("go-best"),
     goNew = el("go-new"), goPassed = el("go-passed"), goTime = el("go-time"),
     goTop = el("go-top"), goBtn = el("go-again"), goCoins = el("go-coins"),
     goNitro = el("go-nitro"), goAir = el("go-air"), goChain = el("go-chain"),
+    goNos = el("go-nos"), goDrift = el("go-drift"),
     goDist = el("go-dist"), goSector = el("go-sector"), goSectorIdx = el("go-sector-idx"),
     goRankName = el("go-rank-name"), goRankNext = el("go-rank-next"), goRankBar = el("go-rank-bar"),
     goGradeLetter = el("go-grade-letter"), goGradeQual = el("go-grade-qual"),
@@ -71,7 +73,7 @@ export function makeHud(onPlayAgain) {
       // Nitro pushes speed01 past 1, so the readout genuinely climbs past the
       // car's rated top speed — colour it to make that unmissable.
       speedEl.textContent = Math.round(s.speed01 * PHYS.topSpeedKmh);
-      speedEl.classList.toggle("boost", !!s.overdrive);
+      speedEl.classList.toggle("boost", !!s.overdrive || (s.nos || 0) > 0.2);
     }
     // Tach + gear: green → gold → red as the revs climb to the redline.
     if (tachFill) {
@@ -90,6 +92,14 @@ export function makeHud(onPlayAgain) {
         if (comboBar) comboBar.style.width = (Math.max(0, Math.min(1, s.chainTimer / CHAIN.window)) * 100) + "%";
       } else comboEl.classList.remove("show");
     }
+    // Live drift timer, and the NOS pad greys out when the bottle is dry so the
+    // player can see at a glance whether leaning on it will do anything.
+    if (driftEl) {
+      const on = !!s.drifting && (s.driftT || 0) > 0.18;
+      driftEl.classList.toggle("show", on);
+      if (on && driftT) driftT.textContent = (s.driftT || 0).toFixed(1) + "s";
+    }
+    if (nosBtn) nosBtn.classList.toggle("dry", (s.heat || 0) <= 0.05);
     if (secName) secName.textContent = s.sectorName || "";
     if (secDist) secDist.textContent = Math.floor(s.dist || 0).toLocaleString() + " m";
     if (secBar) secBar.style.width = (Math.max(0, Math.min(1, s.sectorProgress || 0)) * 100).toFixed(1) + "%";
@@ -138,6 +148,8 @@ export function makeHud(onPlayAgain) {
     if (goPeak) goPeak.textContent = Math.round((g.peakHeat || 0) * 100) + "%";
     if (goChain) goChain.textContent = g.chainBest || 0;
     if (goDist) goDist.textContent = Math.floor(g.dist || 0).toLocaleString() + " m";
+    if (goNos) goNos.textContent = (g.nosTime || 0).toFixed(1) + "S";
+    if (goDrift) goDrift.textContent = (g.bestDrift || 0).toFixed(1) + "S";
     // The sector is the headline — the one line of a run worth repeating.
     if (goSector) goSector.textContent = g.sectorName || "COAST RUN";
     if (goSectorIdx) goSectorIdx.textContent = "SECTOR " + (g.sector || 1);

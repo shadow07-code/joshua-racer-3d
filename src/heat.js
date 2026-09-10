@@ -50,7 +50,8 @@ export function addHeat(h, amount) {
   const before = h.v;
   h.v = clamp01(h.v + amount);
   if (h.v > h.peak) h.peak = h.v;
-  if (h.v > 0) h.flameout = 0;      // any gain at all pulls you out of the fire
+  // Only a REAL recovery puts the fire out — see HEAT.flameoutClear.
+  if (h.v > HEAT.flameoutClear) h.flameout = 0;
   return h.v - before;
 }
 
@@ -79,9 +80,12 @@ export function updateHeat(h, dt, events) {
     }
   }
 
-  // Flameout: zero heat does not kill instantly. You get a few seconds of siren
-  // to go and take a risk, which is the most desperate and best moment in a run.
-  if (h.v <= 0) {
+  // Flameout: running dry does not kill instantly. You get a few seconds of
+  // siren to go and take a risk, which is the most desperate and best moment in
+  // a run. The clock runs any time you are BELOW flameoutClear rather than only
+  // at exactly zero — otherwise the crumbs you pick up incidentally from passing
+  // traffic hold you at 0.001 forever and the fire can never actually kill you.
+  if (h.v <= HEAT.flameoutClear) {
     if (h.flameout === 0 && events) events.flameoutStart = true;
     h.flameout += dt;
     if (h.flameout >= HEAT.flameoutSeconds) {

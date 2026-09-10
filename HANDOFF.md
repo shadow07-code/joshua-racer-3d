@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v19` — **bump on every code change** |
+| **Service worker** | `jr3d-v21` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -65,6 +65,24 @@ no reason to start a second one. Three additions, each aimed at a different gap:
 
 The result screen is now the shareable artefact: sector reached as the headline,
 grade, score, rank bar with a rank-up flash, and eight stats.
+
+### Then: the UNDERGROUND pass — NOS and DRIFT
+
+Aimed squarely at NFS Underground. Two verbs, one structural idea:
+
+- **THE HEAT BAR IS THE NOS BOTTLE.** Holding NOS burns the same resource that is
+  your speed, your score and your life. A full bar sustains it ~4.6s and then you
+  are empty and dying, so "when do I burn it" is the sharpest decision in the
+  game. It comes with the Underground camera: FOV yanks +20°, the chase pulls
+  back 9 and drops 2.4, and the speed streaks start near the vanishing point and
+  run off the edge of frame.
+- **DRIFT** scores the slide, off the existing physics and with no new button.
+  **Measured on lateral velocity, NOT on slip** — see the trap in §6, that
+  distinction was a real bug. It pays score generously and heat only modestly, on
+  purpose: sliding needs no traffic, so if it refilled the bar you could mash
+  left-right down an empty road forever. Drifting extends a run; it cannot
+  sustain one. Traffic stays the only real fuel.
+- **DASH moved to a double-tap of a steer pad**, freeing the centre for NOS.
 
 ---
 
@@ -277,6 +295,8 @@ Everything numeric lives in **`src/config.js`**.
 
 | What | Where | Notes |
 |---|---|---|
+| NOS | `NOS` | `burn` 0.115/s (a full bar ≈ 4.6s), `speedMul` 1.24, `fovKick`/`camBack`/`camDrop` are the Underground shot |
+| Drift | `DRIFT` | `minVx` 42 of ~73 max — commitment, not a nudge. `heatPerSec` MUST stay under the 0.045–0.110/s decay or drifting becomes a way to survive without traffic |
 | Sectors | `src/stages.js` `SECTORS` | distance thresholds + per-sector night/oncoming/cops/density. Endless past the table |
 | Chain | `CHAIN` | `window` 3.2s to lapse, `cap` 30 × `step` 0.04 → ×2.2 max, `draftMin` 0.45s to count a slipstream |
 | Ranks | `src/rank.js` `RANKS` | cumulative lifetime score thresholds |
@@ -336,8 +356,11 @@ const { makePlayer, updatePlayer } = await imp("entities/player.js");
 **Always** `node --check` every changed file first — it catches typos in seconds. The headless path
 now also covers the opposing lane, nitro, ramps and the jump arc — see the pattern in §6A below.
 
-**§6B. `node tools/heattest.mjs`** — the BALANCE harness (sections G and H also
-print the sector ladder with reach-times and the rank ladder in runs-to-title), and the most important
+**§6B. `node tools/heattest.mjs`** — the BALANCE harness. Sections G/H print the
+sector and rank ladders; **I** checks the NOS trade, **J** sweeps drift across
+weave styles (this is what caught the slip-vs-velocity bug), and **K** asserts the
+fire can actually kill: grazing must die, doing nothing must die at exactly
+`flameoutSeconds`, and one real shave must visibly buy time, and the most important
 test in the repo, because the design claim *is* a set of numbers. It measures:
 how long coasting buys you; what shave rate holds a given heat; that a crash at
 95% is survivable and at 35% is fatal; that a stone-cold car still out-runs the
@@ -374,6 +397,20 @@ that a ramp triggers exactly once and only in its own lane.
 - **three.js: `+rotation.x` pitches the nose DOWN.** Squat under power is *negative*.
 - **Anchor `index.html` `<style>` edits precisely.** An over-broad "replace from X to `</style>`"
   once deleted every menu-overlay rule and blanked the title screen.
+- **A "drift" here is LATERAL VELOCITY, not `slip`.** Slip is the gap between
+  where the wheels point and where the mass is going, which sounds like the right
+  measure and is not: it spikes for ~0.2s after a steering change and then pins
+  HIGH while you grind along the barrier, because the wall holds `vx` at zero. A
+  slip-based drift therefore paid out for wall-riding and gave nothing at all for
+  committed driving — the harness showed a hard weave banking **zero** drifts
+  while a lazy one banked eighteen. `|vx|` is the honest measure.
+- **A long slide must auto-bank.** Threading dense traffic can hold a drift open
+  indefinitely, and an unbroken drift that only pays on exit pays nothing — the
+  better you drifted, the less you got. `DRIFT.maxSeconds` pays out and continues.
+- **The flameout clock must run BELOW a threshold, not at exactly zero.** Any
+  positive gain used to clear it, and a grazing slipstream frame happens
+  constantly in traffic, so the player floated at 0.001 forever and the fire
+  could never kill anyone. `HEAT.flameoutClear` is the escape bar now.
 - **`road.reset()` must be called on every fresh run — and it now is.** `prune()` only ever moves
   the centerline's `baseI` FORWARD, so after ~570 units the samples for small `z` are gone. A restart
   puts the player back at `z = 0`, where `centerlineAt` clamped to `baseI` and then *extrapolated*

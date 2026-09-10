@@ -3,7 +3,7 @@
 // plus an online LEADERBOARD reachable from the title and game-over. The 3D world
 // keeps animating as a live attract scene behind the menus.
 import * as THREE from "three";
-import { PHYS, STEER, SCORE, RACE, ONCOMING, NITRO, JUMP, NIGHT, HEAT, CHAIN } from "./config.js";
+import { PHYS, STEER, SCORE, RACE, ONCOMING, NITRO, JUMP, NIGHT, HEAT, CHAIN, NOS, DRIFT } from "./config.js";
 import { sectorIndexAt, sectorAt, nextSectorZ, sectorStartZ } from "./stages.js";
 import { currentRank, bankRun } from "./rank.js";
 import {
@@ -17,10 +17,10 @@ import { initPwa, setInstallButtonVisible } from "./pwa.js";
 import {
   initAudio, resumeAudio, suspendAudio, startEngine, stopEngine, setEngine, setEngineRampage,
   sfxNearMiss, sfxCombo, sfxBump, sfxCrash, sfxRampage, sfxShockwave, sfxBarrelDrop, sfxGameOver, sfxCoin, sfxShift,
-  sfxNitro, sfxHorn, sfxLaunch, sfxLand, sfxAlert,
+  sfxNitro, sfxHorn, sfxLaunch, sfxLand, sfxAlert, startNos, stopNos, setNosLevel,
   startHeliSound, stopHeliSound, isSfxEnabled, toggleSfx,
 } from "./audio.js";
-import { makePlayer, updatePlayer, playerBox, applyCollisionLoss, launchPlayer, dashPlayer } from "./entities/player.js";
+import { makePlayer, updatePlayer, playerBox, applyCollisionLoss, launchPlayer, dashPlayer, cancelDrift } from "./entities/player.js";
 import {
   makeTrafficSystem, prepopulateTraffic, updateTraffic, checkTrafficHit, checkCoinGrab,
   checkNitroGrab, checkRampHit, startOncoming, smashCar, draftTarget, SPAWN_ROW_GAP,
@@ -81,6 +81,7 @@ let sectorIdx = 1, sector = sectorAt(1), sectorBest = 1;
 // HEAT — the one resource the game runs on. See src/heat.js for why.
 const heat = makeHeat();
 let draftT = 0, draftStreak = 0, dashCount = 0;
+let nosTime = 0, driftTime = 0, bestDrift = 0, nosSoundOn = false;
 
 // ── Game state + scoring ──
 const STATE = {
@@ -154,6 +155,10 @@ function resetWorld() {
   player.dashT = 0; player.dashCd = 0; player.dashDir = 0;
   Object.assign(heat, makeHeat());
   draftT = 0; draftStreak = 0; dashCount = 0;
+  player.nosOn = false; player.nos = 0;
+  cancelDrift(player);
+  nosTime = 0; driftTime = 0; bestDrift = 0;
+  if (nosSoundOn) { stopNos(); nosSoundOn = false; }
   traffic.list.length = 0; traffic.coins.length = 0; traffic.nextRowZ = 80; traffic.lastGapLane = 2;
   traffic.rowsSpawned = 0; traffic.passedCount = 0; traffic.rowGapZ = SPAWN_ROW_GAP;
   traffic.nitros.length = 0; traffic.ramps.length = 0;
@@ -262,6 +267,7 @@ function takeHit(severity, invulnSec) {
   crashFlash = 0.5;
   player.steerVis = 0; player.steerSmooth = 0; player.vx = 0; player.slip = 0;
   player.dashT = 0;                               // a crash cancels a dash outright
+  cancelDrift(player);                            // ... and throws away the slide
   player.steerLock = 0.45;                        // un-bank + brief straight recovery
   sfxCrash();
   juice.hitStop(0.09); juice.addShake(0.55);
@@ -275,6 +281,7 @@ function endRun() {
   const banked = bankRun(score.score);
   setEngineRampage(false); stopEngine();
   if (heliSoundOn) { stopHeliSound(); heliSoundOn = false; }
+  if (nosSoundOn) { stopNos(); nosSoundOn = false; }
   sfxGameOver();
   const run = {
     score: Math.floor(score.score), best: bestEverScore(), isNew,
@@ -283,6 +290,7 @@ function endRun() {
     peakHeat: heat.peak, draftT, dashes: dashCount,
     sector: sectorBest, sectorName: sectorAt(sectorBest).name,
     chainBest, dist: player.z, rank: banked.rank, rankedUp: banked.rankedUp,
+    nosTime, driftTime, bestDrift,
   };
   hud.showGameOver(run);
   setState(STATE.GAMEOVER);
@@ -376,6 +384,21 @@ function applyNight(n) {
   rampsView.setNight(n);
 }
 
+// A slide just ended cleanly. Banked by how HARD it was, not merely how long —
+// driftSum is the integral of |slip|, so committing deeper pays more than
+// holding a lazy angle for the same duration.
+function onDriftBanked(t, sum, sustained) {
+  if (t < DRIFT.minBankSeconds) return;
+  driftTime += t;
+  bestDrift = Math.max(bestDrift, t);
+  addHeat(heat, DRIFT.heatPerSec * sum * chainMul());
+  const gain = Math.round(DRIFT.scorePerSec * sum * chainMul());
+  score.score += gain;
+  linkChain();
+  hud.popup((sustained ? "DRIFT KING +" : t > 1.4 ? "BIG DRIFT +" : "DRIFT +") + gain, "drift", sustained || t > 1.4);
+  juice.addShake(0.1);
+}
+
 // Touchdown after a ramp jump — air time is the score, and the longer it was the
 // harder the landing lands.
 function onLanded(air) {
@@ -413,8 +436,9 @@ function stepRace(dt) {
   // DASH — the emergency hop. It costs heat, which is the point: the resource
   // that keeps you alive is the same one you burn to escape, so bailing out of a
   // bad line is never free and hoarding is never safe.
-  if (consumePress("Dash")) {
-    const dir = input.steer || Math.sign(player.vx) || Math.sign(player.steerVis) || 1;
+  const dashL = consumePress("DashL"), dashR = consumePress("DashR");
+  if (dashL || dashR || consumePress("Dash")) {
+    const dir = dashL ? -1 : dashR ? 1 : (input.steer || Math.sign(player.vx) || 1);
     if (heat.v > HEAT.dash && dashPlayer(player, dir)) {
       addHeat(heat, -HEAT.dash);
       dashCount++;
@@ -422,7 +446,25 @@ function stepRace(dt) {
       sfxLaunch();
     }
   }
-  updatePlayer(player, dt, input, { onFenceBump: sfxBump, onLand: onLanded });
+
+  // ── NOS ── The heat bar IS the bottle. Holding the button burns the resource
+  // that is simultaneously your speed, your score and your life, so every second
+  // on it is borrowed against staying alive. That trade is the point.
+  player.nosOn = !!input.nos && heat.v > NOS.minHeat && !heat.dead;
+  if (player.nos > 0.01) {
+    addHeat(heat, -NOS.burn * player.nos * dt);
+    score.score += NOS.scorePerSec * player.nos * chainMul() * dt;
+    nosTime += player.nos * dt;
+  }
+  if (player.nosOn && !nosSoundOn) { startNos(); nosSoundOn = true; }
+  else if (!player.nosOn && nosSoundOn) { stopNos(); nosSoundOn = false; }
+  if (nosSoundOn) setNosLevel(player.nos);
+
+  updatePlayer(player, dt, input, {
+    onFenceBump: sfxBump,
+    onLand: onLanded,
+    onDriftEnd: onDriftBanked,
+  });
   raceTime += dt;
 
   // ── SECTORS ── Distance-gated, so running hot moves you through the game
@@ -627,7 +669,7 @@ function stepRace(dt) {
   const gearNow = gearAt(speed01).gear;
   if (gearNow > lastGear) { sfxShift(); juice.addShake(0.07); }
   lastGear = gearNow;
-  const fov = effects.update(dt, speed01);
+  const fov = effects.update(dt, speed01, player.nos || 0);
   chase.update(dt, player, fov);
 }
 
@@ -707,6 +749,7 @@ function render() {
     heat: heat.v, heatTier: heat.tier, overdrive: heat.overdrive,
     flameout: heat.flameout, drafting: state === STATE.RACE && draftStreak > 0,
     mult: heatScoreMul(heat), airborne: !!player.airborne,
+    nos: player.nos, drifting: player.drifting, driftT: player.driftT,
   });
   fx.render();
   camera.position.x -= _shake.x; camera.position.y -= _shake.y;

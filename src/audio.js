@@ -300,6 +300,36 @@ export function sfxGameOver() {
   });
 }
 
+// ── NITROUS ── a held roar: the crack of the bottle, then a resonant blast whose
+// brightness tracks how far the spool has wound in.
+let nosSrc = null, nosGain = null, nosFilt = null;
+export function startNos() {
+  if (!ctx || nosSrc) return;
+  const t = ctx.currentTime;
+  nosSrc = ctx.createBufferSource(); nosSrc.buffer = getNoiseBuf(); nosSrc.loop = true;
+  nosFilt = ctx.createBiquadFilter(); nosFilt.type = "bandpass"; nosFilt.frequency.value = 700; nosFilt.Q.value = 1.1;
+  nosGain = ctx.createGain(); nosGain.gain.value = 0;
+  nosSrc.connect(nosFilt); nosFilt.connect(nosGain); nosGain.connect(sfxGain);
+  nosSrc.start();
+  // The purge: a short bright hiss on the way in, so engaging has an attack.
+  const p = ctx.createBufferSource(); p.buffer = getNoiseBuf();
+  const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 3200;
+  const pg = ctx.createGain(); pg.gain.value = 0.22; pg.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+  p.connect(hp); hp.connect(pg); pg.connect(sfxGain); p.start(t); p.stop(t + 0.3);
+}
+export function setNosLevel(l) {
+  if (!nosGain || !ctx) return;
+  const t = ctx.currentTime, v = Math.max(0, Math.min(1, l));
+  nosGain.gain.setTargetAtTime(0.19 * v, t, 0.05);
+  nosFilt.frequency.setTargetAtTime(600 + 2800 * v, t, 0.08);
+}
+export function stopNos() {
+  if (!nosSrc) return;
+  try { nosSrc.stop(); } catch {}
+  nosSrc.disconnect(); nosGain.disconnect(); nosFilt.disconnect();
+  nosSrc = nosGain = nosFilt = null;
+}
+
 // ── Helicopter rotor — continuous while choppers are on-screen ──
 let heliSrc = null, heliGain = null, heliLfo = null, heliLfoGain = null;
 export function startHeliSound() {

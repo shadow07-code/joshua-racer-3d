@@ -202,3 +202,89 @@ line("H. RANK LADDER (at ~20k per strong run)");
          `≈ ${(xp / RUN).toFixed(0)} strong runs`);
   }
 }
+
+// ── I. NOS: does the bottle behave, and is the trade real? ───────────────────
+line("");
+line("I. NOS");
+{
+  const { NOS } = await imp("config.js");
+  const p = makePlayer(); p.throttle01 = 0.8; p.speed = PHYS.maxSpeed * 0.8;
+  const kmh = (v) => (v / PHYS.maxSpeed * PHYS.topSpeedKmh).toFixed(0);
+  for (let i = 0; i < 300; i++) updatePlayer(p, DT, { steer: 0 }, {});
+  const cruise = p.speed;
+  p.nosOn = true;
+  let spoolFrames = 0;
+  while (p.nos < 0.99 && spoolFrames < 200) { updatePlayer(p, DT, { steer: 0 }, {}); spoolFrames++; }
+  for (let i = 0; i < 300; i++) updatePlayer(p, DT, { steer: 0 }, {});
+  line(`   cruise ${kmh(cruise)} km/h → on NOS ${kmh(p.speed)} km/h ` +
+       `(+${(p.speed / cruise * 100 - 100).toFixed(0)}%), spools in ${(spoolFrames / 60).toFixed(2)}s`);
+  // How long can a full bar sustain it, and what does that cost you?
+  const h = H.makeHeat(); h.v = 1;
+  let t = 0;
+  while (h.v > NOS.minHeat && t < 60) { H.addHeat(h, -NOS.burn * DT); H.updateHeat(h, DT, {}); t += DT; }
+  line(`   a FULL bar sustains NOS for ${t.toFixed(1)}s (burn ${NOS.burn}/s + normal decay) — then you are empty and dying`);
+}
+
+// ── J. DRIFT: does it actually fire while weaving through traffic? ───────────
+// The whole feature rests on |slip| clearing DRIFT.min during ordinary play. If
+// it never does, drift scoring is dead code no matter how good the maths is.
+line("");
+line("J. DRIFT — does ordinary weaving produce slides?");
+{
+  const { DRIFT } = await imp("config.js");
+  const cases = [
+    ["mashing (0.5s flips)", 0.5],
+    ["quick weave (0.9s)", 0.9],
+    ["committed weave (1.4s)", 1.4],
+    ["long holds (2.2s)", 2.2],
+  ];
+  for (const [label, period] of cases) {
+    const p = makePlayer(); p.throttle01 = 0.9; p.speed = PHYS.maxSpeed * 0.9;
+    let t = 0, dir = 1, acc = 0, banked = 0, totalT = 0, best = 0, heatGain = 0, scoreGain = 0;
+    while (t < 30) {
+      acc += DT;
+      if (acc >= period) { acc -= period; dir = -dir; }
+      updatePlayer(p, DT, { steer: dir }, {
+        onDriftEnd: (dt2, sum) => {
+          if (dt2 < DRIFT.minBankSeconds) return;
+          banked++; totalT += dt2; best = Math.max(best, dt2);
+          heatGain += DRIFT.heatPerSec * sum;
+          scoreGain += DRIFT.scorePerSec * sum;
+        },
+      });
+      t += DT;
+    }
+    line(`   ${label.padEnd(24)} ${String(banked).padStart(3)} drifts / 30s, best ${best.toFixed(2)}s, ` +
+         `heat +${(heatGain / 30).toFixed(3)}/s, score ${Math.round(scoreGain).toLocaleString()}`);
+  }
+  line("   (decay is 0.045-0.110/s, so drift alone must NOT out-earn it — traffic is the fuel)");
+}
+
+// ── K. Flameout: can the fire actually kill you? ─────────────────────────────
+line("");
+line("K. FLAMEOUT");
+{
+  const mk = () => { const h = H.makeHeat(); h.v = 0.02; return h; };
+  // Someone scraping incidental crumbs off passing traffic must still burn out.
+  // A real graze is a slipstream frame at ~5% closeness: 0.42 * 0.05 = 0.021/s,
+  // which is below the 0.045/s floor decay. It must NOT save you.
+  const GRAZE = HEAT.draftRate * 0.05;
+  let h = mk(), t = 0;
+  while (!h.dead && t < 30) { H.addHeat(h, GRAZE * DT); H.updateHeat(h, DT, {}); t += DT; }
+  line(`   grazing at ${GRAZE.toFixed(3)}/s (vs ${HEAT.drainBase}/s decay) → ` +
+       `${h.dead ? "dead at " + t.toFixed(1) + "s — correct" : "SURVIVED 30s — the fire cannot kill, BUG"}`);
+  // ... whereas one genuine shave buys you back out of it.
+  h = mk(); t = 0;
+  let saved = false;
+  while (!h.dead && t < 12) {
+    if (t > 2 && !saved) { H.addHeat(h, HEAT.nearMiss * 2); saved = true; }
+    H.updateHeat(h, DT, {});
+    t += DT;
+  }
+  // A real risk should visibly buy time even if you eventually burn out anyway.
+  let base = mk(), bt = 0;
+  while (!base.dead && bt < 30) { H.updateHeat(base, DT, {}); bt += DT; }
+  line(`   nothing at all              → dead at ${bt.toFixed(1)}s`);
+  line(`   one real shave at t=2s      → ${h.dead ? "dead at " + t.toFixed(1) + "s" : "escaped to " + (h.v * 100).toFixed(0) + "%"}` +
+       `  (bought ${(t - bt).toFixed(1)}s)`);
+}

@@ -4,11 +4,14 @@ import { KEYS } from "./config.js";
 
 const state = {
   steer: 0,
+  nos: false,                   // HELD, not edged — nitrous burns while you hold it
   pressed: new Set(),           // edge-triggered, consumed by the main loop
 };
 
 const DASH_KEYS = ["Shift", "ArrowDown", "s", "S"];
+const NOS_KEYS = [" ", "ArrowUp", "w", "W"];
 const heldKeys = new Set();
+const btnNos = { held: false };
 const touchPoints = new Map();  // identifier -> { x, y, side }
 const btnHeld = { L: false, R: false };
 
@@ -17,6 +20,7 @@ function recompute() {
   if (KEYS.left.some(k => heldKeys.has(k))) s -= 1;
   if (KEYS.right.some(k => heldKeys.has(k))) s += 1;
   // On-screen buttons take priority — the primary mobile control.
+  state.nos = btnNos.held || NOS_KEYS.some((k) => heldKeys.has(k));
   if (btnHeld.L && !btnHeld.R) s = -1;
   else if (btnHeld.R && !btnHeld.L) s = 1;
   else {
@@ -94,7 +98,16 @@ function bindSteerButtons() {
   const btnR = document.getElementById("btn-steer-right");
   if (!btnL || !btnR) return;
   const pointerSide = new Map();   // pointerId -> side currently pressing a pad
-  const press = (side) => { btnHeld[side] = true; state.pressed.add("Touch"); recompute(); };
+  // A quick double-tap on a steer pad is the emergency dash — same thumb, no new
+  // button, and it reads as a flick rather than a separate control.
+  const lastTap = { L: -1e9, R: -1e9 };
+  const DOUBLE_TAP_MS = 280;
+  const press = (side) => {
+    const now = performance.now();
+    if (now - lastTap[side] < DOUBLE_TAP_MS) { state.pressed.add("Dash" + side); lastTap[side] = -1e9; }
+    else lastTap[side] = now;
+    btnHeld[side] = true; state.pressed.add("Touch"); recompute();
+  };
   const release = (side) => { btnHeld[side] = false; recompute(); };
   const wire = (btn, side) => {
     btn.addEventListener("pointerdown", (e) => { e.preventDefault(); try { btn.setPointerCapture(e.pointerId); } catch {} pointerSide.set(e.pointerId, side); press(side); });
@@ -110,12 +123,20 @@ function bindSteerButtons() {
   wire(btnL, "L");
   wire(btnR, "R");
 
-  // The dash pad sits between the steer pads. It only ever fires an edge — the
-  // direction comes from whichever way you are already steering.
-  const btnD = document.getElementById("btn-dash");
-  if (btnD) {
-    btnD.addEventListener("pointerdown", (e) => { e.preventDefault(); state.pressed.add("Dash"); });
-    btnD.addEventListener("contextmenu", (e) => e.preventDefault());
+  // NOS takes the centre pad, and it is HELD rather than tapped — the whole feel
+  // of it is leaning on the button and watching the world stretch.
+  const btnN = document.getElementById("btn-nos");
+  if (btnN) {
+    const down = (e) => { e.preventDefault(); try { btnN.setPointerCapture(e.pointerId); } catch {} btnNos.held = true; state.pressed.add("Touch"); recompute(); };
+    const up = () => { btnNos.held = false; recompute(); };
+    btnN.addEventListener("pointerdown", down);
+    btnN.addEventListener("pointerup", up);
+    btnN.addEventListener("pointercancel", up);
+    btnN.addEventListener("pointerleave", up);
+    btnN.addEventListener("lostpointercapture", up);
+    btnN.addEventListener("contextmenu", (e) => e.preventDefault());
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
   // Safety net: if a pad's own pointerup is ever missed (DOM churn / hidden
   // control / lost event), a window-level up or cancel for THAT pointer still
@@ -141,6 +162,7 @@ export function initInput(canvas) {
 // phantom steer into the new race.
 export function clearSteer() {
   btnHeld.L = false; btnHeld.R = false;
+  btnNos.held = false;
   touchPoints.clear();
   recompute();
 }
