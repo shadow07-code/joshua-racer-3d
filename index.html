@@ -234,12 +234,15 @@
     .popup.headon    { color: #ffd24a; font-size: 32px; text-shadow: 0 0 18px rgba(255,150,40,0.95), 0 2px 10px rgba(0,0,0,0.8); }
     .popup.nitro     { color: #4ff0d4; font-size: 30px; text-shadow: 0 0 18px rgba(70,240,210,0.95), 0 2px 10px rgba(0,0,0,0.7); }
     .popup.crash     { color: #ff5a7a; font-size: 28px; text-shadow: 0 0 16px rgba(255,60,90,0.9), 0 2px 10px rgba(0,0,0,0.8); }
-    #btn-dash { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 16px); left: 50%;
-      transform: translateX(-50%); width: 96px; height: 52px; border-radius: 26px;
-      font-size: 13px; font-weight: 800; letter-spacing: 2px;
-      background: rgba(255,194,71,0.16); border: 1px solid rgba(255,194,71,0.5); color: #ffd98a;
-      -webkit-tap-highlight-color: transparent; touch-action: none; }
-    #btn-dash:active { background: rgba(255,194,71,0.4); }
+    /* Needs to out-specify "#steer-controls button", which sets a 40%-wide,
+       64px-font arrow — otherwise the dash pad swallows the middle of the road. */
+    #steer-controls #btn-dash { left: 50%; right: auto;
+      bottom: calc(env(safe-area-inset-bottom) + 13%);
+      transform: translateX(-50%); width: 112px; height: 44px; max-height: 44px;
+      border-radius: 22px; font-size: 13px; font-weight: 800; letter-spacing: 2px;
+      background: rgba(255,194,71,0.14); border: 1px solid rgba(255,194,71,0.45);
+      color: #ffd98a; text-shadow: none; }
+    #steer-controls #btn-dash:active { background: rgba(255,194,71,0.42); color: #fff; }
     .popup.big       { font-size: 42px; }
     @keyframes popup-rise {
       0%   { opacity: 0; transform: translate(-50%, 16px) scale(0.7); }

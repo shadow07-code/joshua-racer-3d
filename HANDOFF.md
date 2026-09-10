@@ -45,14 +45,18 @@ mistakes that kill a cold one: aggression is the safe play.**
 
 ## 1. Open items (start here)
 
-1. **🟠 The HEAT redesign has NOT had a visual/feel pass.** The Chrome extension
-   dropped mid-session, so it was verified headlessly (thoroughly — see §6A/§6B)
-   and only boot-checked in the browser: no console errors, HUD elements present,
-   hearts and pips gone. **Nobody has watched it move or played it.** Most likely
-   things to be wrong: heat-bar placement/size, whether the DASH pad is reachable
-   with a thumb, whether the drain rate feels punishing or fair, and whether the
-   screen heat-wash is too strong. All of those are single values in `HEAT`
-   (`src/config.js`) or CSS in `index.html`.
+1. **🟠 The HEAT redesign has not been PLAYED, only observed.** Verified: it boots
+   clean, the HUD is right, heat visibly drains while coasting, the multiplier and
+   speed track it, and all game-over element ids resolve. Fixed during that pass:
+   the DASH pad was inheriting `#steer-controls button` (40% wide, 64px font) and
+   swallowing the middle of the road.
+   **Still unseen in motion: OVERDRIVE, the flameout death, and what high heat
+   actually looks like** — the preview pane composites too slowly to reach them,
+   and the balance numbers came from `tools/heattest.mjs`, not from hands on it.
+   Most likely to need tuning, all single values in `HEAT` (`src/config.js`):
+   `drainBase`/`drainScale` if it feels punishing, `draftRate`/`draftRange` if the
+   slipstream is fiddly, `crash` (0.45) if a mistake feels fatal. The screen
+   heat-wash strength is in `hud.js` (`rampTintEl`).
 2. **🔴 The online leaderboard is DOWN — needs the owner.** The Upstash Redis database is
    unreachable: Vercel's runtime logs show `leaderboard upstream error: fetch failed` (a network/DNS
    failure, *not* auth — that would log `redis 401`). The env vars are still set in the project, so
