@@ -29,11 +29,13 @@ export function startScoring(state, playerZ) {
   state.beatHi = false;
 }
 
-// Per-frame distance accumulator.
-export function tickScore(state, playerZ) {
+// Per-frame distance accumulator, scaled by the caller's heat multiplier — the
+// same metre of road is worth several times more when you cover it hot, so the
+// board ranks nerve rather than patience.
+export function tickScore(state, playerZ, mul = 1) {
   const dz = Math.max(0, playerZ - state.lastZ);
   state.lastZ = playerZ;
-  state.score += dz * SCORE.distanceWeight;
+  state.score += dz * SCORE.distanceWeight * mul;
   if (state.score > state.hi) state.beatHi = true;
 }
 

@@ -101,16 +101,38 @@
     #go-again:active { background: #ff8aa0; color: #1a1430; }
 
     /* Rampage tint (full-screen pulse during nitrous) */
-    #rampage-tint { position: fixed; inset: 0; pointer-events: none; z-index: 23; opacity: 0; transition: opacity 0.2s;
-      background: radial-gradient(ellipse at center, rgba(60,170,255,0) 35%, rgba(60,160,255,0.35) 100%),
-                  radial-gradient(ellipse at center, rgba(255,140,40,0) 55%, rgba(255,120,30,0.22) 100%); }
+    /* Heat wash — a constant edge tint whose strength and hue track the bar, so
+       the SCREEN tells you how hot you are without you looking at the HUD. */
+    #rampage-tint { position: fixed; inset: 0; pointer-events: none; z-index: 23; opacity: 0;
+      transition: opacity 0.25s linear, background-color 0.4s linear;
+      background-color: rgba(255,120,30,0); }
     /* Rampage banner */
     #rampage-msg { position: absolute; top: 28%; left: 50%; transform: translateX(-50%); opacity: 0;
       font-size: 42px; font-weight: 900; letter-spacing: 4px; color: #ffd24a;
       text-shadow: 0 0 18px rgba(255,150,40,0.85), 0 3px 8px rgba(0,0,0,0.6); white-space: nowrap; }
     /* Rampage pip meter */
-    #pips { position: absolute; bottom: 7%; left: 50%; transform: translateX(-50%); display: none; gap: 6px; }
-    #pips.show { display: flex; }
+    /* HEAT — speed, score and life in one bar. Deliberately the biggest, loudest
+       element on screen: every decision the player makes is about this number. */
+    #heat { position: absolute; bottom: 6.5%; left: 50%; transform: translateX(-50%);
+      width: min(46vw, 520px); pointer-events: none; }
+    #heat-label { display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 12px; letter-spacing: 3px; margin-bottom: 5px; }
+    #heat-tier { font-weight: 800; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+    #heat-hint { font-size: 10px; letter-spacing: 2px; opacity: 0.42; }
+    #heat-track { height: 15px; border-radius: 8px; background: rgba(10,12,20,0.66);
+      border: 1px solid rgba(255,255,255,0.16); overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.5); }
+    #heat-fill { height: 100%; width: 0%; border-radius: 7px;
+      transition: background-color 0.25s linear; }
+    #heat.flameout #heat-track { animation: heatpanic 0.34s ease-in-out infinite; }
+    #heat.flameout #heat-tier { color: #ff5a7a; }
+    @keyframes heatpanic {
+      0%,100% { box-shadow: 0 0 0 rgba(255,60,90,0); border-color: rgba(255,90,120,0.4); }
+      50% { box-shadow: 0 0 22px rgba(255,60,90,0.95); border-color: rgba(255,120,140,1); }
+    }
+    #mult { position: absolute; top: calc(env(safe-area-inset-top) + 40px); left: calc(env(safe-area-inset-left) + 14px);
+      font-size: 20px; font-weight: 800; letter-spacing: 1px; color: #ffc247;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+    #pips { display: none; }
     #pips .pip { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.14);
       border: 1px solid rgba(255,255,255,0.25); }
     #pips .pip.gold { background: #ffcf3a; border-color: #fff0b0; box-shadow: 0 0 8px rgba(255,200,60,0.85); }
@@ -211,6 +233,13 @@
     .popup.perfect   { color: #aef9ff; font-size: 30px; text-shadow: 0 0 16px rgba(150,240,255,0.95), 0 2px 10px rgba(0,0,0,0.7); }
     .popup.headon    { color: #ffd24a; font-size: 32px; text-shadow: 0 0 18px rgba(255,150,40,0.95), 0 2px 10px rgba(0,0,0,0.8); }
     .popup.nitro     { color: #4ff0d4; font-size: 30px; text-shadow: 0 0 18px rgba(70,240,210,0.95), 0 2px 10px rgba(0,0,0,0.7); }
+    .popup.crash     { color: #ff5a7a; font-size: 28px; text-shadow: 0 0 16px rgba(255,60,90,0.9), 0 2px 10px rgba(0,0,0,0.8); }
+    #btn-dash { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 16px); left: 50%;
+      transform: translateX(-50%); width: 96px; height: 52px; border-radius: 26px;
+      font-size: 13px; font-weight: 800; letter-spacing: 2px;
+      background: rgba(255,194,71,0.16); border: 1px solid rgba(255,194,71,0.5); color: #ffd98a;
+      -webkit-tap-highlight-color: transparent; touch-action: none; }
+    #btn-dash:active { background: rgba(255,194,71,0.4); }
     .popup.big       { font-size: 42px; }
     @keyframes popup-rise {
       0%   { opacity: 0; transform: translate(-50%, 16px) scale(0.7); }
@@ -308,14 +337,17 @@
 
   <div id="hud" aria-hidden="true">
     <div id="tag">JOSHUA RACER 3D</div>
-    <div id="lives">♥♥♥</div>
+    <div id="mult">×1.0</div>
     <div id="passed">PASSED 0</div>
     <div id="coins-hud">🪙 0</div>
     <div id="score">0</div>
     <div id="combo"><div class="lab">COMBO</div><div id="combo-n">×2</div><div id="combo-track"><div id="combo-bar"></div></div></div>
     <div id="nearmiss">NEAR MISS +100</div>
     <div id="rampage-msg">RAMPAGE!</div>
-    <div id="pips"></div>
+    <div id="heat">
+      <div id="heat-label"><span id="heat-tier">COLD</span><span id="heat-hint">TAILGATE · SHAVE · FLY</span></div>
+      <div id="heat-track"><div id="heat-fill"></div></div>
+    </div>
     <div id="speed-wrap">
       <div id="tach"><div id="tach-fill"></div></div>
       <span id="speed">0</span><br><span id="speed-unit">KM/H</span>
@@ -334,6 +366,7 @@
 
   <div id="steer-controls" aria-hidden="true">
     <button id="btn-steer-left" aria-label="Steer left">◀</button>
+    <button id="btn-dash" aria-label="Dash">DASH</button>
     <button id="btn-steer-right" aria-label="Steer right">▶</button>
   </div>
 
@@ -379,6 +412,7 @@
         <div class="go-stat">TOP<b id="go-top">0 KM/H</b></div>
         <div class="go-stat">NITRO<b id="go-nitro">0</b></div>
         <div class="go-stat">BEST AIR<b id="go-air">0.0S</b></div>
+        <div class="go-stat">PEAK HEAT<b id="go-peak">0%</b></div>
       </div>
       <button id="go-again">PLAY AGAIN</button>
       <div class="go-actions">
@@ -430,9 +464,9 @@
   <div id="tutorial" class="overlay modal-overlay" role="dialog" aria-label="How to play">
     <div class="panel-box">
       <div class="panel-title">HOW TO PLAY</div>
-      <div class="tut-body">Your car <b>accelerates on its own</b>.<br>Steer to weave through traffic — don't crash.</div>
-      <div class="tut-keys"><span>◀ A ←</span><span>→ D ▶</span></div>
-      <div class="tut-body tut-tip">Chain near-misses at speed to build <b>COMBO</b> and unleash <b>RAMPAGE</b>.</div>
+      <div class="tut-body"><b>HEAT is everything</b> — your speed, your score and your life.<br>It drains constantly. Playing safe kills you.</div>
+      <div class="tut-keys"><span>◀ A ←</span><span>→ D ▶</span><span>SHIFT = DASH</span></div>
+      <div class="tut-body tut-tip">Refill it by taking risk: <b>tuck in behind a car</b> and hold the slipstream, then <b>swerve out late</b> for the near-miss. Fill the bar for <b>OVERDRIVE</b>.</div>
       <div class="panel-row">
         <button id="tut-skip" class="ghost-btn">SKIP</button>
         <button id="tut-play" class="big-btn">DRIVE</button>

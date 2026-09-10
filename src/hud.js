@@ -3,6 +3,7 @@
 // RAMPAGE pip meter + banner + tint, and the game-over panel. main.js feeds it
 // state each frame.
 import { PHYS, RACE, GRADES } from "./config.js";
+import { TIERS } from "./heat.js";
 
 // Letter grade for a final score — GRADES is sorted high→low by min-score.
 function gradeFor(score) {
@@ -12,16 +13,18 @@ function gradeFor(score) {
 
 export function makeHud(onPlayAgain) {
   const el = (id) => document.getElementById(id);
-  const scoreEl = el("score"), livesEl = el("lives"), passedEl = el("passed"), speedEl = el("speed"), coinsEl = el("coins-hud");
+  const scoreEl = el("score"), multEl = el("mult"), passedEl = el("passed"), speedEl = el("speed"), coinsEl = el("coins-hud");
+  const heatEl = el("heat"), heatFill = el("heat-fill"), heatTier = el("heat-tier");
   const tachEl = el("tach"), tachFill = el("tach-fill"), gearEl = el("gear");
   const comboEl = el("combo"), comboN = el("combo-n"), comboBar = el("combo-bar");
   const nearmissEl = el("nearmiss"), crashEl = el("crash-flash");
-  const rampMsgEl = el("rampage-msg"), rampTintEl = el("rampage-tint"), pipsEl = el("pips");
+  const rampMsgEl = el("rampage-msg"), rampTintEl = el("rampage-tint");
   const goPanel = el("gameover"), goScore = el("go-score"), goBest = el("go-best"),
     goNew = el("go-new"), goPassed = el("go-passed"), goTime = el("go-time"),
     goTop = el("go-top"), goBtn = el("go-again"), goCoins = el("go-coins"),
     goNitro = el("go-nitro"), goAir = el("go-air"),
-    goGradeLetter = el("go-grade-letter"), goGradeQual = el("go-grade-qual");
+    goGradeLetter = el("go-grade-letter"), goGradeQual = el("go-grade-qual"),
+    goPeak = el("go-peak");
   const popupsEl = el("popups");
   if (goBtn && onPlayAgain) goBtn.addEventListener("click", onPlayAgain);
 
@@ -38,24 +41,18 @@ export function makeHud(onPlayAgain) {
   }
   function clearPopups() { if (popupsEl) popupsEl.innerHTML = ""; }
 
-  // Build the rampage pips (gold = banked near-misses; blue = pass-cooldown refill).
-  const pipEls = [];
-  if (pipsEl) for (let i = 0; i < RACE.rampageNearMisses; i++) {
-    const d = document.createElement("div"); d.className = "pip"; pipsEl.appendChild(d); pipEls.push(d);
-  }
-
   const fmt = (n) => Math.floor(n).toLocaleString();
 
   function update(s) {
     if (scoreEl) scoreEl.textContent = fmt(s.score);
-    if (livesEl) livesEl.textContent = "♥".repeat(Math.max(0, s.lives));
+    if (multEl) multEl.textContent = "×" + (s.mult || 1).toFixed(1);
     if (passedEl) passedEl.textContent = "PASSED " + s.passed;
     if (coinsEl) coinsEl.textContent = "🪙 " + (s.coins || 0);
     if (speedEl) {
       // Nitro pushes speed01 past 1, so the readout genuinely climbs past the
       // car's rated top speed — colour it to make that unmissable.
       speedEl.textContent = Math.round(s.speed01 * PHYS.topSpeedKmh);
-      speedEl.classList.toggle("boost", (s.boost || 0) > 0);
+      speedEl.classList.toggle("boost", !!s.overdrive);
     }
     // Tach + gear: green → gold → red as the revs climb to the redline.
     if (tachFill) {
@@ -77,25 +74,30 @@ export function makeHud(onPlayAgain) {
     if (crashEl) crashEl.style.opacity = (s.crashFlash > 0 ? Math.min(0.55, s.crashFlash) : 0).toFixed(3);
 
     // ── Rampage ──
-    if (rampTintEl) rampTintEl.style.opacity = s.rampageActive ? 0.18 : 0;
+    // The screen itself reports heat: a widening, warming edge wash that goes
+    // white in overdrive. You should be able to feel your state peripherally.
+    if (rampTintEl) {
+      const h = Math.max(0, Math.min(1, s.heat || 0));
+      rampTintEl.style.opacity = (0.04 + 0.20 * h * h).toFixed(3);
+      rampTintEl.style.background = s.overdrive
+        ? "radial-gradient(ellipse at center, rgba(255,255,255,0) 30%, rgba(255,245,215,0.85) 100%)"
+        : "radial-gradient(ellipse at center, rgba(255,120,30,0) " + (58 - 24 * h).toFixed(0) +
+          "%, rgba(255," + Math.round(150 - 70 * h) + ",40,0.9) 100%)";
+    }
     if (rampMsgEl) {
       rampMsgEl.style.opacity = s.rampageMsgTimer > 0 ? Math.min(1, s.rampageMsgTimer / 0.5).toFixed(2) : 0;
       if (s.rampageMsgTimer > 0) rampMsgEl.textContent = s.rampageMsg;
     }
-    if (pipsEl) {
-      let show = false;
-      if (s.rampageActive) {
-        show = false;
-      } else if (s.rampageMeter > 0) {
-        show = true;
-        for (let i = 0; i < pipEls.length; i++)
-          pipEls[i].className = "pip" + (i < s.rampageMeter ? " gold" : "") + (s.rampageMeter === RACE.rampageNearMisses - 1 ? " flash" : "");
-      } else if (s.rampageCooldown > 0) {
-        show = true;
-        const filled = RACE.rampageCooldownPasses - s.rampageCooldown;   // refills as cars pass
-        for (let i = 0; i < pipEls.length; i++) pipEls[i].className = "pip" + (i < filled ? " blue" : "");
-      }
-      pipsEl.classList.toggle("show", show);
+    // ── HEAT ── the one readout that matters. Colour is the tier, so the player
+    // reads their state from the bar's hue without parsing a number.
+    if (heatFill) {
+      const h = Math.max(0, Math.min(1, s.heat || 0));
+      const tier = TIERS[s.heatTier || 0];
+      heatFill.style.width = (h * 100).toFixed(1) + "%";
+      heatFill.style.backgroundColor = s.overdrive ? "#ffffff" : tier.color;
+      heatFill.style.boxShadow = h > 0.6 ? "0 0 16px " + tier.color : "none";
+      if (heatTier) heatTier.textContent = s.overdrive ? "OVERDRIVE" : tier.name;
+      if (heatEl) heatEl.classList.toggle("flameout", (s.flameout || 0) > 0);
     }
   }
 
@@ -110,6 +112,7 @@ export function makeHud(onPlayAgain) {
     if (goCoins) goCoins.textContent = g.coins || 0;
     if (goTime) goTime.textContent = Math.floor(g.time) + "S";
     if (goTop) goTop.textContent = g.topSpeed + " KM/H";
+    if (goPeak) goPeak.textContent = Math.round((g.peakHeat || 0) * 100) + "%";
     if (goNitro) goNitro.textContent = g.nitros || 0;
     if (goAir) goAir.textContent = (g.bestAir || 0).toFixed(1) + "S";
     if (goPanel) goPanel.classList.add("show");

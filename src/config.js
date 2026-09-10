@@ -12,10 +12,8 @@ export const PHYS = {
   // calm at top speed. The km/h readout = speed / maxSpeed * topSpeedKmh.
   maxSpeed: 108,
   cruiseSpeed: 108,
-  boostFactor: 1.10,
-  // Two-phase ramp: punchy launch to ~100 km/h, then a slow grind to the top.
-  rampPhase1Seconds: 4,
-  rampPhase2Seconds: 80,
+  // accel/drag are how quickly the car chases the speed HEAT is asking for. The
+  // lag is deliberate — it makes a heat gain feel like it builds into speed.
   accel: 14,
   drag: 5,
   fenceBounce: 7,
@@ -39,7 +37,6 @@ export const PHYS = {
   carHalfWidth: 6,
   carHalfHeight: 8,
   topSpeedKmh: 200,
-  phase1Kmh: 100,
 };
 
 // Wide multi-lane road (lateral units == the 2D game's pixels, reused 1:1 so the
@@ -52,28 +49,16 @@ export const ROAD = {
 
 // Endless-survival rules (subset used so far; rest copied as phases land).
 export const RACE = {
-  startLives: 3,
   countdownSeconds: 3,
-  topSpeedThreshold: 0.95,
   comboKmh: 100,
   comboWindow: 2.8,
-  // RAMPAGE: an unbroken chain of `rampageNearMisses` combo-tier near-misses
-  // fills the pip meter and fires a ~7s invincible nitrous smash-through. On
-  // exit, an instantaneous shockwave kicks out the next 2 cars ahead. Then the
-  // meter is locked until `rampageCooldownPasses` cars are passed.
-  rampageNearMisses: 10,
-  rampageCooldownPasses: 10,
-  rampageDuration: 7,
-  rampageClearDist: 120,   // exit-shockwave search range for the next 2 cars
   // Police helicopter: flies in once the player crosses copTriggerKmh and drops
-  // flaming barrels (a hit costs a life). Density compounds after top speed.
+  // flaming barrels (a hit bills heat like any other crash).
   copTriggerKmh: 150,
-  densityStepSeconds: 50,
-  densityStepIncrement: 0.10,
-  densityMax: 1.9,
   // Tension/release pacing: traffic spacing breathes ±densityWaveAmp on a
   // densityWavePeriod-second cycle (surge → breather → surge) so difficulty isn't
-  // monotonic. The gap lane is always left open, so every row stays threadable.
+  // monotonic ON TOP of the heat-driven base density. The gap lane is always left
+  // open, so every row stays threadable.
   densityWaveAmp: 0.18,
   densityWavePeriod: 22,
   // Gold coins scattered down the OPEN gap lane — the ideal weaving line. Grabbing
@@ -92,7 +77,6 @@ export const SCORE = {
   passBonus: 25,
   nearMissBonus: 100,
   smashBonus: 150,
-  survivalSecondBonus: 10,
   coinValue: 50,           // per coin grabbed on the racing line
   // Precision (tightness) bonus on a near-miss: a closer shave pays more,
   // 1 → 1 + precisionMax. Within precisionPx lateral clearance = pixel-perfect.
@@ -102,10 +86,13 @@ export const SCORE = {
 
 // Game-over LETTER GRADE by final score — the instant "did I do well?" verdict
 // that fuels the retry reflex. [minScore, letter, qualifier, cssColor].
+// Recalibrated for the heat economy (tools/heattest.mjs section F): a bot that
+// plays the slipstream line scores ~33k over two minutes, so S is a long run
+// held genuinely hot rather than a long run survived.
 export const GRADES = [
-  [90000, "S", "LEGENDARY!", "#ffd24a"],
-  [45000, "A", "GREAT RUN",  "#5ef08a"],
-  [18000, "B", "SOLID",      "#9be7ff"],
+  [75000, "S", "LEGENDARY!", "#ffd24a"],
+  [35000, "A", "GREAT RUN",  "#5ef08a"],
+  [14000, "B", "SOLID",      "#9be7ff"],
   [0,     "C", "KEEP GOING", "#cfc7e6"],
 ];
 
@@ -184,12 +171,10 @@ export const ONCOMING = {
   hitSeverity: 0.75,       // ... and a head-on costs far more speed than a rear-end
 };
 
-// NITRO CANISTERS. A short overspeed burst (player.boost already drives the
-// speed cap), placed 70% of the time in the opposing lane once it's live — so
-// the reward for reading the oncoming rhythm is the thing that makes you faster.
+// NITRO CANISTERS — now HEAT pickups (see HEAT.canister). Placed 70% of the time
+// in the opposing lane once it is live, so the reward for reading the oncoming
+// rhythm is a big slug of the only resource that matters.
 export const NITRO = {
-  seconds: 2.6,            // boost granted per canister
-  maxStock: 6,             // seconds of banked boost the car can hold
   chance: 0.10,            // per spawned row (≈ one every 9s at base density)
   riskyLaneChance: 0.7,    // how often it sits in the opposing lane (once live)
   value: 120,              // score for grabbing one
@@ -220,4 +205,62 @@ export const NIGHT = {
   startAfter: 12,          // ... after this much grace at dusk
   exposureDusk: 1.22,
   exposureNight: 0.74,
+};
+
+// ── HEAT ─────────────────────────────────────────────────────────────────────
+// The single resource the game now runs on (src/heat.js). Everything here is
+// balanced around one question: how long can you coast before the run dies?
+// At the numbers below, doing NOTHING takes you from a full bar to flameout in
+// about 14 seconds — long enough to reposition, far too short to relax.
+export const HEAT = {
+  start: 0.34,             // enough to be moving properly from the first frame
+
+  // Decay. Hotter drains faster, so the top of the bar is a place you visit.
+  drainBase: 0.045,        // per second at zero heat
+  drainScale: 0.065,       // extra per second at full heat
+
+  // Gains. Tuned so a good near-miss roughly cancels 2s of decay, and a deep
+  // tailgate is worth about the same — two different routes to the same fuel.
+  nearMiss: 0.085,         // flat part of a shave
+  nearMissTight: 0.095,    // ...plus this much, scaled by how close it was
+  oncomingMul: 2.2,        // head-on shaves are the richest fuel in the game
+  // The slipstream has to be a beat the player can HOLD, not a frame-perfect
+  // twitch. At a ~35 u/s closing speed a 62-unit tail is about a second and a
+  // half of "hold it… hold it… now bail", which is the rhythm the whole game is
+  // built on. A 34-unit tail was under a second and simply read as a rear-end.
+  draftRate: 0.42,         // per second at the bumper, falling off to 0 at draftRange
+  draftRange: 62,          // how far back the slipstream reaches
+  draftLateral: 7,         // how well lined up you have to be
+  airRate: 0.16,           // per second airborne
+  coin: 0.03,
+  canister: 0.28,          // nitro pickups are now heat pickups
+  smash: 0.05,             // per car plowed during overdrive — feeds the frenzy
+
+  // Costs.
+  crash: 0.45,             // a crash is survivable if you are hot, fatal if cold
+  dash: 0.10,              // the escape move spends the resource it protects
+
+  // Zero-heat grace. Long enough for one desperate lunge at a car.
+  flameoutSeconds: 4.0,
+
+  // Overdrive — the old rampage, now earned continuously off the top of the bar.
+  overdriveAt: 0.985,
+  overdriveExit: 0.55,
+  overdriveDrain: 0.16,    // ~2.7s from full unless you keep smashing
+  overdriveSpeedMul: 1.10,
+  overdriveScoreBonus: 2,
+
+  // Derived outputs.
+  speedFloor: 0.60,        // cold speed as a fraction of top — MUST outrun traffic
+  speedCurve: 0.8,         // <1 so early heat pays off and cold is escapable
+  scoreMul: 3.0,           // score rate at full heat vs. cold
+  densityMul: 1.25,        // traffic density at full heat vs. cold
+};
+
+// The emergency lateral hop. Overrides grip entirely for its duration, which is
+// what separates it from just steering hard — it is a teleport you pay for.
+export const DASH = {
+  vx: 195,                 // lateral speed while dashing (~2 lanes in one dash)
+  time: 0.24,
+  cooldown: 0.45,
 };

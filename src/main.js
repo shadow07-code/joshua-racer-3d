@@ -3,7 +3,10 @@
 // plus an online LEADERBOARD reachable from the title and game-over. The 3D world
 // keeps animating as a live attract scene behind the menus.
 import * as THREE from "three";
-import { PHYS, STEER, SCORE, RACE, ONCOMING, NITRO, JUMP, NIGHT } from "./config.js";
+import { PHYS, STEER, SCORE, RACE, ONCOMING, NITRO, JUMP, NIGHT, HEAT } from "./config.js";
+import {
+  makeHeat, addHeat, updateHeat, heatSpeed01, heatScoreMul, heatDensity, tierOf, TIERS,
+} from "./heat.js";
 import { initInput, getInput, consumePress, clearSteer } from "./input.js";
 import * as juice from "./juice.js";
 import { toggleComfort, isComfort } from "./comfort.js";
@@ -15,10 +18,10 @@ import {
   sfxNitro, sfxHorn, sfxLaunch, sfxLand, sfxAlert,
   startHeliSound, stopHeliSound, isSfxEnabled, toggleSfx,
 } from "./audio.js";
-import { makePlayer, updatePlayer, playerBox, applyCollisionLoss, launchPlayer } from "./entities/player.js";
+import { makePlayer, updatePlayer, playerBox, applyCollisionLoss, launchPlayer, dashPlayer } from "./entities/player.js";
 import {
   makeTrafficSystem, prepopulateTraffic, updateTraffic, checkTrafficHit, checkCoinGrab,
-  checkNitroGrab, checkRampHit, startOncoming, smashCar, SPAWN_ROW_GAP,
+  checkNitroGrab, checkRampHit, startOncoming, smashCar, draftTarget, SPAWN_ROW_GAP,
 } from "./entities/traffic.js";
 import { makeTrafficView } from "./render3d/vehicles.js";
 import { makeCoinsView } from "./render3d/coins.js";
@@ -68,7 +71,11 @@ const rampsView = makeRampsView(scene, road);
 // Threats + escalation (Phase 5): police helicopter + density scaling.
 let cops = makeCopsSystem();
 const copsView = makeCopsView(scene, road);
-let hitTopSpeed = false, densityTimer = 0, densityMul = 1;
+let densityMul = 1;
+
+// HEAT — the one resource the game runs on. See src/heat.js for why.
+const heat = makeHeat();
+let draftT = 0, draftStreak = 0, dashCount = 0;
 
 // ── Game state + scoring ──
 const STATE = {
@@ -86,7 +93,7 @@ let raceTime = 0, topSpeedKmh = 0, coinsCollected = 0, nitrosGrabbed = 0, bestAi
 // Nightfall (0 = the locked warm dusk, 1 = full night). Only advances while
 // RACING, so every menu keeps the dusk hero shot the project is art-directed to.
 let nightT = 0;
-let rampageMeter = 0, rampageCooldown = 0, rampageMsg = "", rampageMsgTimer = 0;
+let rampageMsg = "", rampageMsgTimer = 0;
 let heliSoundOn = false;
 
 // Juice: milestone callouts + camera shake.
@@ -135,12 +142,16 @@ function resetWorld() {
   player.raceTime = 0; player.steerSmooth = 0; player.steerVis = 0; player.steerLock = 0;
   player.vx = 0; player.slip = 0; player.accel01 = 0; player.lastSpeed = null; lastGear = 1;
   player.y = 0; player.vy = 0; player.airT = 0; player.airborne = false;
-  player.lives = RACE.startLives; player.invuln = 1.5;
-  player.rampage = 0; player.boost = 0;
+  player.invuln = 1.5;
+  player.rampage = 0; player.throttle01 = HEAT.speedFloor;
+  player.dashT = 0; player.dashCd = 0; player.dashDir = 0;
+  Object.assign(heat, makeHeat());
+  draftT = 0; draftStreak = 0; dashCount = 0;
   traffic.list.length = 0; traffic.coins.length = 0; traffic.nextRowZ = 80; traffic.lastGapLane = 2;
   traffic.rowsSpawned = 0; traffic.passedCount = 0; traffic.rowGapZ = SPAWN_ROW_GAP;
   traffic.nitros.length = 0; traffic.ramps.length = 0;
   traffic.oncomingOn = false; traffic.nextOncomingZ = 0; traffic.lastRampZ = -1e9;
+  traffic.densityMul = heatDensity(heat);      // seed the opening rows at the right density
   prepopulateTraffic(traffic, 500);
   coinsCollected = 0; nitrosGrabbed = 0; bestAir = 0;
   nightT = 0;
@@ -148,8 +159,8 @@ function resetWorld() {
   startScoring(score, 0);
   combo = 0; comboTimer = 0; comboBest = 0; nearMissTimer = 0; crashFlash = 0;
   raceTime = 0; topSpeedKmh = 0;
-  rampageMeter = 0; rampageCooldown = 0; rampageMsg = ""; rampageMsgTimer = 0;
-  hitTopSpeed = false; densityTimer = 0; densityMul = 1;
+  rampageMsg = ""; rampageMsgTimer = 0;
+  densityMul = 1;
   attractT = 0;
   applyNight(0);
   speedMsIdx = 0; comboMsHit.clear();
@@ -209,16 +220,21 @@ function registerSmash() {
 
 // Take a life-costing hit (traffic crash or flaming barrel). Returns true if the
 // run just ended.
+// Take a crash. There are no lives any more — a crash bills HEAT, which means a
+// hot player shrugs off a mistake that kills a cold one. That is the whole
+// incentive structure in one line: driving aggressively is the SAFE play, and
+// the run ends when you have nothing left to spend, not when a counter hits zero.
 function takeHit(severity, invulnSec) {
   applyCollisionLoss(player, severity, invulnSec);
-  combo = 0; comboTimer = 0; rampageMeter = 0;   // breaks the streak + dumps the meter
+  combo = 0; comboTimer = 0;
   crashFlash = 0.5;
   player.steerVis = 0; player.steerSmooth = 0; player.vx = 0; player.slip = 0;
+  player.dashT = 0;                               // a crash cancels a dash outright
   player.steerLock = 0.45;                        // un-bank + brief straight recovery
   sfxCrash();
   juice.hitStop(0.09); juice.addShake(0.55);
-  player.lives -= 1;
-  if (player.lives <= 0) { endRun(); return true; }
+  const lost = -addHeat(heat, -HEAT.crash);
+  hud.popup("-" + Math.round(lost * 100) + " HEAT", "crash", true);
   return false;
 }
 
@@ -231,6 +247,7 @@ function endRun() {
     score: Math.floor(score.score), best: bestEverScore(), isNew,
     passed: traffic.passedCount, time: raceTime, topSpeed: topSpeedKmh, coins: coinsCollected,
     nitros: nitrosGrabbed, bestAir, night: nightT,
+    peakHeat: heat.peak, draftT, dashes: dashCount,
   };
   hud.showGameOver(run);
   setState(STATE.GAMEOVER);
@@ -356,7 +373,20 @@ function stepAttract(dt) {
 }
 
 function stepRace(dt) {
-  updatePlayer(player, dt, getInput(), { onFenceBump: sfxBump, onLand: onLanded });
+  const input = getInput();
+  // DASH — the emergency hop. It costs heat, which is the point: the resource
+  // that keeps you alive is the same one you burn to escape, so bailing out of a
+  // bad line is never free and hoarding is never safe.
+  if (consumePress("Dash")) {
+    const dir = input.steer || Math.sign(player.vx) || Math.sign(player.steerVis) || 1;
+    if (heat.v > HEAT.dash && dashPlayer(player, dir)) {
+      addHeat(heat, -HEAT.dash);
+      dashCount++;
+      juice.addShake(0.16);
+      sfxLaunch();
+    }
+  }
+  updatePlayer(player, dt, input, { onFenceBump: sfxBump, onLand: onLanded });
   raceTime += dt;
 
   // NIGHTFALL — a one-way grade from the locked warm dusk into full night, after
@@ -379,15 +409,12 @@ function stepRace(dt) {
     speedMsIdx++;
   }
 
-  // Density scaling — once top speed is first reached, traffic compounds.
-  if (!hitTopSpeed && player.speed >= PHYS.maxSpeed * RACE.topSpeedThreshold) { hitTopSpeed = true; densityTimer = 0; }
-  if (hitTopSpeed) {
-    densityTimer += dt;
-    while (densityTimer >= RACE.densityStepSeconds) {
-      densityTimer -= RACE.densityStepSeconds;
-      densityMul = Math.min(RACE.densityMax, densityMul * (1 + RACE.densityStepIncrement));
-    }
-  }
+  // DENSITY FOLLOWS HEAT, not a clock. The game feeds you exactly as hard as you
+  // are playing: run hot and the road fills up, which is simultaneously more fuel
+  // and more danger. That is what stops a hot streak from becoming a free ride,
+  // and it means the difficulty curve is authored by the player, not by a timer.
+  densityMul = heatDensity(heat);
+  player.throttle01 = heatSpeed01(heat);
   // Tension/release: breathe the row spacing on a slow cycle (surge → breather →
   // surge) so the difficulty has rhythm instead of a flat grind. Gap lane stays
   // open, so every row is still threadable.
@@ -401,7 +428,7 @@ function stepRace(dt) {
     playerY: player.y,
     onPassed: () => {
       score.score += SCORE.passBonus * Math.max(1, combo);
-      if (rampageCooldown > 0) rampageCooldown -= 1;     // pass-cooldown burns down
+
     },
     onNearMiss: (tightness = 0, car2 = null) => {
       const kmh = player.speed / PHYS.maxSpeed * PHYS.topSpeedKmh;
@@ -411,6 +438,9 @@ function stepRace(dt) {
       const headOn = !!(car2 && car2.oncoming);
       const precision = (1 + SCORE.precisionMax * tightness) * (headOn ? ONCOMING.nearMissMul : 1);
       if (headOn) { sfxHorn(); juice.addShake(0.16); }
+      // FUEL. A shave is the main way heat goes back in — tighter pays more, and
+      // a head-on shave in the opposing lane is the richest source in the game.
+      addHeat(heat, (HEAT.nearMiss + HEAT.nearMissTight * tightness) * (headOn ? HEAT.oncomingMul : 1));
       // A tight shave rewards skill: a micro-freeze that punctuates the moment,
       // and a PERFECT! callout on the closest ones.
       if (tightness >= 0.55) { juice.hitStop(0.05); juice.addShake(0.14); }
@@ -429,19 +459,6 @@ function stepRace(dt) {
           hud.popup("COMBO ×" + combo + "!", "combo", true);
           juice.addShake(0.22);
         }
-        // Fill the rampage meter while armed (not mid-rampage, not in cooldown).
-        if (player.rampage <= 0 && rampageCooldown <= 0) {
-          rampageMeter += 1;
-          if (rampageMeter >= RACE.rampageNearMisses) {
-            rampageMeter = 0;
-            player.rampage = RACE.rampageDuration;
-            player.boost = RACE.rampageDuration;   // nitrous overspeed surge
-            rampageMsg = "RAMPAGE!"; rampageMsgTimer = 1.6;
-            sfxRampage(); setEngineRampage(true);
-            juice.slowMo(0.32, 0.45); juice.addShake(0.5);
-            hud.popup("RAMPAGE!", "milestone", true);
-          }
-        }
       } else {                                     // discreet flat bonus, no combo
         score.score += Math.round(SCORE.nearMissBonus * precision);
         nearMissTimer = 0.8;
@@ -452,20 +469,6 @@ function stepRace(dt) {
     },
   });
 
-  // RAMPAGE timer + exit shockwave (kicks out the next 2 cars ahead).
-  if (player.rampage > 0) {
-    player.rampage = Math.max(0, player.rampage - dt);
-    if (player.rampage === 0) {
-      const ahead = traffic.list
-        .filter((c) => !c.smashed && c.z > player.z && c.z < player.z + RACE.rampageClearDist)
-        .sort((a, b) => a.z - b.z).slice(0, 2);
-      for (const c of ahead) smashCar(c, player.x);
-      rampageMsg = "CLEAR!"; rampageMsgTimer = 0.9;
-      rampageCooldown = RACE.rampageCooldownPasses;       // lock the meter
-      sfxShockwave(); setEngineRampage(false);
-      juice.addShake(0.35); juice.slowMo(0.16, 0.5);
-    }
-  }
 
   // Police helicopter — flies in above copTriggerKmh and drops flaming barrels.
   updateCops(cops, dt, player.z, player.x, player.speed, { onDrop: sfxBarrelDrop });
@@ -482,11 +485,17 @@ function stepRace(dt) {
 
   // Collisions. Everything below is skipped while airborne (checkTrafficHit and
   // checkBarrelHit both take the height and bail out up there).
-  if (player.rampage > 0) {
-    // RAMPAGE: plow through — each smash feeds the combo; invincible, no life loss.
+  if (heat.overdrive) {
+    // OVERDRIVE: plow through — invincible, and every car smashed tops the heat
+    // back up. That is what makes it last: the frenzy sustains itself only while
+    // you keep hitting things, so the reward for a full bar is more aggression.
     const box = playerBox(player);
     let t, guard = 0;
-    while ((t = checkTrafficHit(traffic, box, player.y)) && guard++ < 8) { smashCar(t, player.x); registerSmash(); }
+    while ((t = checkTrafficHit(traffic, box, player.y)) && guard++ < 8) {
+      smashCar(t, player.x);
+      registerSmash();
+      addHeat(heat, HEAT.smash);
+    }
   } else if (player.invuln <= 0) {
     const t = checkTrafficHit(traffic, playerBox(player), player.y);
     if (t) {
@@ -496,12 +505,12 @@ function stepRace(dt) {
       // A head-on arrives at roughly double the closing speed and hurts to match.
       const headOn = !!t.oncoming;
       if (headOn) juice.addShake(0.4);
-      if (takeHit(headOn ? ONCOMING.hitSeverity : 0.5, headOn ? 1.6 : 1.4)) return;
+      takeHit(headOn ? ONCOMING.hitSeverity : 0.5, headOn ? 1.6 : 1.4);
     }
     // Flaming barrel (skipped if a traffic hit this frame already granted invuln).
     if (player.invuln <= 0 && !player.airborne) {
       const bar = checkBarrelHit(cops, playerBox(player));
-      if (bar) { bar.hit = true; if (takeHit(0.5, 1.2)) return; }
+      if (bar) { bar.hit = true; takeHit(0.5, 1.2); }
     }
   }
 
@@ -511,30 +520,70 @@ function stepRace(dt) {
   if (gotCoins) {
     coinsCollected += gotCoins;
     score.score += gotCoins * SCORE.coinValue;
+    addHeat(heat, HEAT.coin * gotCoins);
     sfxCoin();
   }
 
-  // NITRO — banks overspeed seconds. player.boost already drives the speed cap,
-  // so this is the one pickup that changes how the car behaves, not just the score.
+  // NITRO canisters are HEAT pickups — a big instant slug of the only resource
+  // that matters, which is why they are worth gambling the opposing lane for.
   const gotNitro = checkNitroGrab(traffic, playerBox(player), player.y);
   if (gotNitro) {
     nitrosGrabbed += gotNitro;
-    player.boost = Math.min(NITRO.maxStock, player.boost + NITRO.seconds * gotNitro);
+    addHeat(heat, HEAT.canister * gotNitro);
     score.score += gotNitro * NITRO.value;
     sfxNitro();
     juice.addShake(0.12);
-    hud.popup("NITRO!", "nitro", true);
+    hud.popup("+HEAT", "nitro", true);
   }
 
+  // ── HEAT ──────────────────────────────────────────────────────────────────
+  // SLIPSTREAM. Tucking in behind a car pours heat in, and faster the closer you
+  // dare to sit. You cannot hold it — you are far quicker than any civilian car —
+  // so the move is: close on the bumper, hold your nerve, swerve out late, and
+  // collect the near-miss on the way past. Two mechanics, one fluid line.
+  const draft = draftTarget(traffic, player.x, player.z, player.y);
+  if (draft) {
+    draftT += dt;
+    draftStreak += dt;
+    addHeat(heat, HEAT.draftRate * draft.closeness * dt);
+  } else if (draftStreak > 0) {
+    if (draftStreak > 0.5) hud.popup("SLIPSTREAM", "nitro");
+    draftStreak = 0;
+  }
+  if (player.airborne) addHeat(heat, HEAT.airRate * dt);
+
+  const hev = {};
+  updateHeat(heat, dt, hev);
+  if (hev.overdriveStart) {
+    player.rampage = 1;                            // the car model reads this for its aura
+    rampageMsg = "OVERDRIVE!"; rampageMsgTimer = 1.6;
+    sfxRampage(); setEngineRampage(true);
+    juice.slowMo(0.3, 0.45); juice.addShake(0.5);
+    hud.popup("OVERDRIVE!", "milestone", true);
+  }
+  if (hev.overdriveEnd) {
+    player.rampage = 0;
+    rampageMsg = "CLEAR!"; rampageMsgTimer = 0.9;
+    sfxShockwave(); setEngineRampage(false);
+    juice.addShake(0.35);
+  }
+  if (hev.flameoutStart) { rampageMsg = "FLAMEOUT — GET HEAT!"; rampageMsgTimer = HEAT.flameoutSeconds; sfxAlert(); }
+  if (hev.tierTo > hev.tierFrom && hev.tierTo >= 2) {
+    hud.popup(TIERS[hev.tierTo].name, "milestone", hev.tierTo === 3);
+    juice.addShake(0.12);
+  }
+  if (heat.dead) { endRun(); return; }
+
   // Combo decay (a lapsed chain dumps the meter), flash timers.
-  if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) { combo = 0; rampageMeter = 0; } }
+  if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 0; }
   if (nearMissTimer > 0) nearMissTimer = Math.max(0, nearMissTimer - dt);
   if (crashFlash > 0) crashFlash = Math.max(0, crashFlash - dt);
   if (rampageMsgTimer > 0) rampageMsgTimer = Math.max(0, rampageMsgTimer - dt);
 
-  // Distance + per-second survival score.
-  tickScore(score, player.z);
-  score.score += SCORE.survivalSecondBonus * dt;
+  // Ground covered, multiplied by how hot you were covering it. The old flat
+  // per-second survival bonus is gone on purpose — points for merely existing is
+  // exactly what let a player idle in an empty lane and still climb the board.
+  tickScore(score, player.z, heatScoreMul(heat));
 
   const speed01 = player.speed / PHYS.maxSpeed;
   setEngine(speed01);
@@ -573,6 +622,9 @@ function render() {
   // Place + orient the car: position on the centerline, yaw to the road heading,
   // and BANK the model into the steer (camera stays level — comfort lever).
   applyNight(nightT);
+  // Bloom rides the heat, so a hot run visibly blooms out — the lights, the
+  // reflectors and the neon all bleed harder the harder you are driving.
+  fx.bloom.strength = 0.3 + 0.55 * heat.v + (heat.overdrive ? 0.35 : 0);
   road.worldPos(player.z, player.x, _carPos);
   car.root.position.copy(_carPos);
   car.root.position.y = player.y || 0;             // ramp jumps lift the whole car
@@ -610,11 +662,12 @@ function render() {
   follow(camera);   // keep the sunset sky + sun + key light centered on the camera
   environment.follow(camera);
   hud.update({
-    score: score.score, lives: player.lives, passed: traffic.passedCount, coins: coinsCollected,
+    score: score.score, passed: traffic.passedCount, coins: coinsCollected,
     speed01, combo, comboTimer, nearMissTimer, crashFlash, ...gearAt(speed01),
-    rampageActive: player.rampage > 0, rampageMeter, rampageCooldown,
-    rampageMsg, rampageMsgTimer,
-    boost: player.boost || 0, airborne: !!player.airborne,
+    rampageActive: heat.overdrive, rampageMsg, rampageMsgTimer,
+    heat: heat.v, heatTier: heat.tier, overdrive: heat.overdrive,
+    flameout: heat.flameout, drafting: state === STATE.RACE && draftStreak > 0,
+    mult: heatScoreMul(heat), airborne: !!player.airborne,
   });
   fx.render();
   camera.position.x -= _shake.x; camera.position.y -= _shake.y;

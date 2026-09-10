@@ -2,7 +2,7 @@
 // rubber-fence edges. PORTED from the 2D reference (src/entities/player.js); the
 // drawing is gone (render3d/models.js owns that). `x` is the lateral offset from
 // the road CENTERLINE — pure scalar, so the curve never touches this math.
-import { PHYS, ROAD, JUMP } from "../config.js";
+import { PHYS, ROAD, JUMP, DASH } from "../config.js";
 
 export function makePlayer() {
   return {
@@ -13,7 +13,10 @@ export function makePlayer() {
     airT: 0,         // seconds of air on the current jump
     airborne: false,
     speed: PHYS.startSpeed,
-    boost: 0,        // seconds of nitro remaining (Rampage, later phases)
+    throttle01: 0.6, // target speed as a fraction of top — written by the HEAT model
+    dashT: 0,        // remaining dash time
+    dashCd: 0,       // dash cooldown
+    dashDir: 0,
     edgeContact: 0,  // which fence the car is against (-1/0/+1)
     bounce: 0,       // remaining inward rubber-fence rebound
     invuln: 0,
@@ -30,22 +33,6 @@ export function makePlayer() {
   };
 }
 
-// Two-phase target speed: punchy linear climb to ~100 km/h in rampPhase1Seconds,
-// then a slow smoothstep grind from there up to maxSpeed (200 km/h).
-function rampTarget(raceTime) {
-  const p1End = PHYS.rampPhase1Seconds;
-  const p2End = p1End + PHYS.rampPhase2Seconds;
-  const phase1Top = PHYS.maxSpeed * (PHYS.phase1Kmh / PHYS.topSpeedKmh);
-  if (raceTime <= p1End) {
-    const t = raceTime / p1End;
-    return PHYS.startSpeed + (phase1Top - PHYS.startSpeed) * t;
-  }
-  if (raceTime >= p2End) return PHYS.maxSpeed;
-  const t = (raceTime - p1End) / (p2End - p1End);
-  const e = t * t * (3 - 2 * t);
-  return phase1Top + (PHYS.maxSpeed - phase1Top) * e;
-}
-
 export function updatePlayer(p, dt, input, callbacks) {
   p.raceTime += dt;
   // Speed at the END of the previous frame — NOT the start of this one — so that
@@ -53,15 +40,16 @@ export function updatePlayer(p, dt, input, callbacks) {
   // are still seen here and register as a nose-dive.
   const prevSpeed = p.lastSpeed != null ? p.lastSpeed : p.speed;
 
-  const boostCap = PHYS.maxSpeed * (PHYS.boostFactor || 1);
-  let target = rampTarget(p.raceTime);
-  if (p.boost > 0) { target = boostCap; p.boost = Math.max(0, p.boost - dt); }
-
+  // SPEED IS HEAT. It used to be a clock — rampTarget(raceTime) climbed to top
+  // speed over 84 seconds whatever the player did, which meant the single most
+  // important decision in a racing game (commit or back off) did not exist.
+  // main.js now writes p.throttle01 from the heat model every frame, so how fast
+  // the car is moving is a direct readout of how hard you have been driving. The
+  // accel/drag lag is deliberate: heat gains feel like they BUILD into speed.
+  const target = PHYS.maxSpeed * (p.throttle01 != null ? p.throttle01 : 0.6);
   if (p.speed < target) p.speed = Math.min(target, p.speed + PHYS.accel * dt);
   else if (p.speed > target) p.speed = Math.max(target, p.speed - PHYS.drag * dt);
   if (p.speed < 4) p.speed = 4;
-  const cap = p.boost > 0 ? boostCap : PHYS.maxSpeed;
-  if (p.speed > cap) p.speed = cap;
 
   // Steering — asymmetric ease (ported from the fun 2D game): a GENTLE onset from
   // rest makes a light touch a small, precise, deliberate cut; but releases and
@@ -88,9 +76,18 @@ export function updatePlayer(p, dt, input, callbacks) {
   // Off a ramp the wheels have nothing to bite on, so steering authority
   // collapses to a bit of aero yaw — you commit to the line you took off with.
   const targetVx = steer * PHYS.steerSpeed * steerScale * (p.airborne ? JUMP.airSteer : 1);
-  p.vx += (targetVx - p.vx) * Math.min(1, dt * PHYS.grip);
+  if (p.dashCd > 0) p.dashCd = Math.max(0, p.dashCd - dt);
+  if (p.dashT > 0) {
+    // A dash ignores grip completely. That is the whole point — steering hard is
+    // something the car negotiates with its mass, a dash is something you spend.
+    p.dashT = Math.max(0, p.dashT - dt);
+    p.vx = p.dashDir * DASH.vx;
+    p.slip = p.dashDir * 0.85;                    // big yaw so a dash READS as one
+  } else {
+    p.vx += (targetVx - p.vx) * Math.min(1, dt * PHYS.grip);
+    p.slip = Math.max(-1, Math.min(1, (targetVx - p.vx) / PHYS.steerSpeed));
+  }
   p.x += p.vx * dt;
-  p.slip = Math.max(-1, Math.min(1, (targetVx - p.vx) / PHYS.steerSpeed));
 
   // Rubber-fence edges — can't leave the asphalt; a fresh bump shaves speed once.
   const bound = ROAD.halfWidth - PHYS.carHalfWidth;
@@ -145,6 +142,16 @@ export function updatePlayer(p, dt, input, callbacks) {
   p.lastSpeed = p.speed;
 
   if (p.invuln > 0) p.invuln = Math.max(0, p.invuln - dt);
+}
+
+// Fire the emergency hop. Refused mid-dash, on cooldown, or in the air; the
+// caller charges the heat only when this returns true.
+export function dashPlayer(p, dir) {
+  if (p.dashT > 0 || p.dashCd > 0 || p.airborne || !dir) return false;
+  p.dashT = DASH.time;
+  p.dashCd = DASH.cooldown;
+  p.dashDir = Math.sign(dir);
+  return true;
 }
 
 // Launch off a ramp. Starts at the lip height so the arc continues the ramp

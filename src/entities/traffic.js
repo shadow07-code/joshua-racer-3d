@@ -10,7 +10,7 @@
 //   • an OPPOSING carriageway in the outermost lane (cars with negative speed),
 //   • NITRO canisters, biased into that lane once it is live,
 //   • RAMPS on the open gap lane, which launch the player (player.js owns the arc).
-import { PHYS, ROAD, RACE, SCORE, ONCOMING, NITRO, JUMP } from "../config.js";
+import { PHYS, ROAD, RACE, SCORE, ONCOMING, NITRO, JUMP, HEAT } from "../config.js";
 
 const LANES = ROAD.laneCount;
 
@@ -61,7 +61,9 @@ export function makeTrafficSystem(opts = {}) {
     lastRampZ: -1e9,
   };
 }
-export const SPAWN_ROW_GAP = 94;   // base spacing (density scaling divides this)
+// Base spacing between rows. Density divides this, so at full heat rows arrive
+// roughly every 35 units — about a third of a second apart at top speed.
+export const SPAWN_ROW_GAP = 80;
 
 function spawnRow(sys) {
   const r = Math.random();
@@ -92,11 +94,16 @@ function spawnRow(sys) {
     [candidateLanes[i], candidateLanes[j]] = [candidateLanes[j], candidateLanes[i]];
   }
 
-  let carsInRow = 1;
+  // HOW MANY CARS PER ROW. This used to be ONE, which left roughly a single car
+  // every 94 units spread over five lanes — you could drive for five seconds
+  // without seeing traffic, and "weave through traffic" needs traffic. The floor
+  // is now two, and density (which follows heat) pushes it towards filling every
+  // lane but the guaranteed gap.
   const dm = sys.densityMul || 1;
-  if (!wide && dm > 1.12) {
-    const p2 = Math.min(0.6, (dm - 1.12) * 1.1);
-    if (Math.random() < p2) carsInRow = 2;
+  let carsInRow = 1;
+  if (!wide) {
+    const extra = Math.max(0, dm - 1) * 2.2;           // ~0 cold, ~2.7 at full heat
+    carsInRow = 2 + Math.floor(extra) + (Math.random() < (extra % 1) ? 1 : 0);
   }
   const lanesToFill = candidateLanes.slice(0, Math.min(carsInRow, candidateLanes.length));
 
@@ -288,6 +295,29 @@ export function checkNitroGrab(sys, box, playerY = 0) {
     if (box.x1 < n.x + 6 && box.x2 > n.x - 6 && box.z1 < n.z + 7 && box.z2 > n.z - 7) { n.got = true; got++; }
   }
   return got;
+}
+
+// SLIPSTREAM. The nearest same-direction car directly ahead of the player, or
+// null. This is the mechanic that turns traffic from an obstacle into fuel: heat
+// pours in while you are tucked in behind someone, and faster the closer you get.
+//
+// The player is much quicker than any civilian car, so a draft cannot be HELD —
+// you close on the bumper, hold it as long as your nerve lasts, and swerve out at
+// the last moment, which hands you a near-miss on the way past. Two mechanics,
+// one fluid move, and no extra button: the ideal line is now a chain rather than
+// a dodge. Returns { car, closeness } with closeness 0..1 at the bumper.
+export function draftTarget(sys, playerX, playerZ, playerY = 0) {
+  if (playerY > 3) return null;
+  let best = null, bestDz = Infinity;
+  for (const c of sys.list) {
+    if (c.smashed || c.oncoming) continue;
+    const dz = c.z - playerZ;
+    if (dz <= 1 || dz > HEAT.draftRange) continue;
+    if (Math.abs(c.x - playerX) > HEAT.draftLateral) continue;
+    if (dz < bestDz) { bestDz = dz; best = c; }
+  }
+  if (!best) return null;
+  return { car: best, closeness: 1 - bestDz / HEAT.draftRange };
 }
 
 // Did the player just cross a ramp lip at road level? Returns the ramp (once).

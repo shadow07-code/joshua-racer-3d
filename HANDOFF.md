@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v17` — **bump on every code change** |
+| **Service worker** | `jr3d-v18` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -19,9 +19,41 @@ memory dir (`joshua-racer-3d-direction.md`, `joshua-racer-3d-architecture.md`).
 
 ---
 
+## 0. READ THIS FIRST — the game was fundamentally redesigned on 2026-09-10
+
+The owner reported, after everything below was built, that the game **still was not
+fun**. The diagnosis: it had **one verb and no economy**. You steered. Coins, nitro,
+ramps and the opposing lane were all still "steer onto this" or "steer away from
+this", so none of them added a decision. Three things actively killed tension:
+
+1. **Speed was a clock.** `rampTarget(raceTime)` climbed to top speed over 84
+   seconds regardless of play, so the central decision of any racing game —
+   commit or back off — did not exist.
+2. **The guaranteed gap lane** gave every row a visible correct answer.
+3. **Traffic was purely an obstacle**, so the player wanted *less* of the thing
+   the game is made of. And there was barely any: ONE car per 94 units across
+   five lanes meant you could drive five seconds without seeing another vehicle.
+
+The fix is **HEAT** (`src/heat.js`): one resource that is simultaneously your
+speed, your score multiplier, your life, and the traffic-density dial. It drains
+constantly and refills only from risk. Playing safe starves you and the run ends.
+Traffic became fuel rather than obstacle — the same inversion that turns Doom
+Eternal's demons into ammo. **A crash bills heat, so a hot player survives
+mistakes that kill a cold one: aggression is the safe play.**
+
+---
+
 ## 1. Open items (start here)
 
-1. **🔴 The online leaderboard is DOWN — needs the owner.** The Upstash Redis database is
+1. **🟠 The HEAT redesign has NOT had a visual/feel pass.** The Chrome extension
+   dropped mid-session, so it was verified headlessly (thoroughly — see §6A/§6B)
+   and only boot-checked in the browser: no console errors, HUD elements present,
+   hearts and pips gone. **Nobody has watched it move or played it.** Most likely
+   things to be wrong: heat-bar placement/size, whether the DASH pad is reachable
+   with a thumb, whether the drain rate feels punishing or fair, and whether the
+   screen heat-wash is too strong. All of those are single values in `HEAT`
+   (`src/config.js`) or CSS in `index.html`.
+2. **🔴 The online leaderboard is DOWN — needs the owner.** The Upstash Redis database is
    unreachable: Vercel's runtime logs show `leaderboard upstream error: fetch failed` (a network/DNS
    failure, *not* auth — that would log `redis 401`). The env vars are still set in the project, so
    the most likely cause is the **free-tier DB was reclaimed after ~2 months idle**. Fix: create a
@@ -55,6 +87,11 @@ memory dir (`joshua-racer-3d-direction.md`, `joshua-racer-3d-architecture.md`).
 - **Tone:** **neutral warm dusk**. The owner rejected loud pink/synthwave. Subtle bloom only.
 - **Player car:** **road supercar** (McLaren-F1-ish), not the brief's open-wheel F1. Red, with "J".
 - **Road:** gentle sweeping curves, not straight.
+- **⚠️ SUPERSEDED 2026-09-10: "auto-accelerate" and "the 2D game is the fun
+  benchmark".** Speed is no longer a clock and no longer ported from the 2D game;
+  it is a readout of heat. The 2D reference is still the benchmark for *feel*
+  (steering, drift, weight) but explicitly NOT for the reward loop, which is the
+  thing that was not working. The owner authorised overriding these directly.
 - **Landscape-only.**
 - **Nightfall is one-way, and menus never leave dusk.** `nightT` climbs 0→1 over ~95 race seconds
   and then holds; it is reset to 0 by `resetWorld()` and only advances inside `stepRace`, so the
@@ -97,7 +134,8 @@ src/
   input.js        keyboard + touch + on-screen steer pads (+ clearSteer)
   audio.js        procedural Web Audio: gearbox engine + SFX + heli rotor (one channel + toggle)
   music.js        MP3 music bed (loop, mute, pause/resume)
-  scoring.js      score accumulator + localStorage hi-score
+  heat.js         THE CORE LOOP — one resource: speed + score + life + density
+  scoring.js      score accumulator + localStorage hi-score (distance × heat mult)
   hud.js          DOM HUD, tach/gear, popups, pip meter, game-over panel + letter grade
   ui.js           menu overlay manager (title/name/leaderboard/tutorial/paused) + lb render
   leaderboard.js  leaderboard client (fetch/submit + offline cache + pending retry; jr3d.* keys)
@@ -145,7 +183,19 @@ updateTraffic (onPassed/onNearMiss callbacks) → rampage timer/shockwave → up
 
 ## 4. What's built
 
-- **Core:** curved endless road, damped chase cam, two-phase speed ramp, rubber-fence edges, fog,
+- **HEAT (the core loop):** one bar that is speed, score multiplier, life and
+  traffic density. Drains constantly (full → flameout in ~14s of coasting).
+  Refills ONLY from risk: the **slipstream** (tuck in behind a car — closer fills
+  faster, and you cannot hold it because you are far quicker, so the move is hold
+  then swerve late), near-misses (head-on pays ×2.2), air, canisters, coins.
+  Crash bills 45%. Zero heat starts a 4s flameout siren; let it run out and the
+  run ends. Fill the bar and you enter **OVERDRIVE** — invincible smash-through
+  that only sustains itself while you keep hitting cars.
+- **DASH:** an instant ~2-lane lateral hop that ignores grip and costs 10% heat —
+  the resource that keeps you alive is the one you burn to escape.
+- **Traffic density now follows HEAT**, not a clock, and the base density was
+  raised from 1 car/row to 2–4. The game feeds you exactly as hard as you play.
+- **Core:** curved endless road, damped chase cam, rubber-fence edges, fog,
   speed vignette + FOV kick + speed lines, Comfort Mode.
 - **Driving feel:** asymmetric steer ease (gentle onset / snappy reversals), **lateral momentum +
   slip → drift**, **6-speed gearbox**, weight transfer (squat/dive), speed-reactive camera dolly.
@@ -188,6 +238,9 @@ Everything numeric lives in **`src/config.js`**.
 
 | What | Where | Notes |
 |---|---|---|
+| **THE WHOLE GAME** | `HEAT` | `drainBase`/`drainScale` set how long coasting buys you; `nearMiss`, `draftRate`/`draftRange`, `airRate`, `canister` are the refills; `crash` (0.45) is why hot = safe; `speedFloor` (0.60) **must** stay above the fastest traffic or cold becomes a death spiral |
+| Dash | `DASH` | 195 u/s for 0.24s ≈ 2.2 lanes, 0.45s cooldown |
+| Traffic amount | `SPAWN_ROW_GAP` (80) + `HEAT.densityMul` | cars/row is 2 + up to ~2.7 more with heat |
 | **Drift / looseness** | `PHYS.grip` (10) | **lower = more slide**, higher = planted/on-rails |
 | Drift look | `STEER.driftYaw` (0.55) | how far the nose over-rotates vs the path |
 | Steering rate | `PHYS.steerSpeed` (112), `steerEase` (16) | ease is **×3.5 on release/reversal** — do NOT make this symmetric (§6) |
@@ -240,6 +293,15 @@ const { makePlayer, updatePlayer } = await imp("entities/player.js");
 
 **Always** `node --check` every changed file first — it catches typos in seconds. The headless path
 now also covers the opposing lane, nitro, ramps and the jump arc — see the pattern in §6A below.
+
+**§6B. `node tools/heattest.mjs`** — the BALANCE harness, and the most important
+test in the repo, because the design claim *is* a set of numbers. It measures:
+how long coasting buys you; what shave rate holds a given heat; that a crash at
+95% is survivable and at 35% is fatal; that a stone-cold car still out-runs the
+fastest traffic (or cold is an inescapable death spiral); and it runs two bots
+through the real sim — a COWARD that never takes a risk and a RACER that plays
+the slipstream line. **The coward must die in well under a minute and the racer
+must reach overdrive.** If that inverts, the loop is broken no matter how it looks.
 
 **§6A. `node tools/simtest.mjs`** — the checked-in headless suite. What it asserts (extend it when
 you touch the sim; it

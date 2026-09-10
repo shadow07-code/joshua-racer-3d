@@ -7,6 +7,7 @@ const state = {
   pressed: new Set(),           // edge-triggered, consumed by the main loop
 };
 
+const DASH_KEYS = ["Shift", "ArrowDown", "s", "S"];
 const heldKeys = new Set();
 const touchPoints = new Map();  // identifier -> { x, y, side }
 const btnHeld = { L: false, R: false };
@@ -32,7 +33,11 @@ function recompute() {
 
 window.addEventListener("keydown", (e) => {
   if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(e.key)) e.preventDefault();
-  if (!heldKeys.has(e.key)) { heldKeys.add(e.key); state.pressed.add(e.key); }
+  if (!heldKeys.has(e.key)) {
+    heldKeys.add(e.key);
+    state.pressed.add(e.key);
+    if (DASH_KEYS.includes(e.key)) state.pressed.add("Dash");
+  }
   recompute();
 }, { passive: false });
 
@@ -104,6 +109,14 @@ function bindSteerButtons() {
   };
   wire(btnL, "L");
   wire(btnR, "R");
+
+  // The dash pad sits between the steer pads. It only ever fires an edge — the
+  // direction comes from whichever way you are already steering.
+  const btnD = document.getElementById("btn-dash");
+  if (btnD) {
+    btnD.addEventListener("pointerdown", (e) => { e.preventDefault(); state.pressed.add("Dash"); });
+    btnD.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
   // Safety net: if a pad's own pointerup is ever missed (DOM churn / hidden
   // control / lost event), a window-level up or cancel for THAT pointer still
   // releases its side. Per-pointer, so multitouch steering isn't affected.

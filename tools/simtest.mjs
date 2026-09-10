@@ -9,6 +9,7 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const imp = (p) => import(pathToFileURL(join(SRC, p)).href);
 
 const { PHYS, ONCOMING, NITRO, JUMP, ROAD } = await imp("config.js");
+const { makeHeat, heatSpeed01 } = await imp("heat.js");
 const { makePlayer, updatePlayer, playerBox, launchPlayer } = await imp("entities/player.js");
 const T = await imp("entities/traffic.js");
 
@@ -111,13 +112,16 @@ const noInput = { steer: 0 };
   console.log(`5. PICKUPS  over ${(dist / 1000).toFixed(1)}k units / 120s: ${nitroSeen} nitro (${riskyN} in the opposing lane), ${rampSeen} ramps`);
   console.log(`   → a ramp every ${(dist / rampSeen).toFixed(0)}u (config min gap ${JUMP.minGapZ}u), nitro every ${(120 / nitroSeen).toFixed(1)}s`);
 
-  // Boost raises the cap.
-  const q = makePlayer(); q.speed = PHYS.maxSpeed; q.raceTime = 300;
-  for (let i = 0; i < 120; i++) updatePlayer(q, DT, noInput, {});
-  const base = q.speed;
-  q.boost = NITRO.seconds;
-  for (let i = 0; i < 60; i++) updatePlayer(q, DT, noInput, {});
-  console.log(`   boost: ${(base / PHYS.maxSpeed * PHYS.topSpeedKmh).toFixed(0)} km/h → ${(q.speed / PHYS.maxSpeed * PHYS.topSpeedKmh).toFixed(0)} km/h (cap ×${PHYS.boostFactor})`);
+  // Speed tracks the throttle the HEAT model asks for — the thing that replaced
+  // the old race-time ramp. Detailed balance lives in tools/heattest.mjs.
+  const q = makePlayer(); q.speed = PHYS.maxSpeed * 0.6;
+  const kmh = (v) => (v / PHYS.maxSpeed * PHYS.topSpeedKmh).toFixed(0);
+  q.throttle01 = 0.6;
+  for (let i = 0; i < 300; i++) updatePlayer(q, DT, noInput, {});
+  const cold = q.speed;
+  q.throttle01 = 1.0;
+  for (let i = 0; i < 600; i++) updatePlayer(q, DT, noInput, {});
+  console.log(`   throttle 0.60 → ${kmh(cold)} km/h, throttle 1.00 → ${kmh(q.speed)} km/h (speed IS heat)`);
 }
 
 // ── 6. Airborne immunity: traffic, coins and near-misses all switch off ──────
@@ -135,7 +139,22 @@ const noInput = { steer: 0 };
   console.log(`   15u up:      hit=${air.hit} coin=${air.coin} nitro=${air.nitro}   (all must be false/0)`);
 }
 
-// ── 7. Ramp trigger fires exactly once ───────────────────────────────────────
+// ── 7. Dash: a real escape, and refused while it is on cooldown ──────────────
+{
+  const { dashPlayer } = await imp("entities/player.js");
+  const p = makePlayer(); p.throttle01 = 1;
+  for (let i = 0; i < 120; i++) updatePlayer(p, DT, noInput, {});
+  const x0 = p.x;
+  const fired = dashPlayer(p, 1);
+  let frames = 0;
+  while (p.dashT > 0 && frames < 120) { updatePlayer(p, DT, noInput, {}); frames++; }
+  const moved = p.x - x0;
+  const refused = !dashPlayer(p, 1);          // still inside the cooldown
+  console.log(`7. DASH     fired=${fired} moved ${moved.toFixed(1)}u in ${(frames / 60).toFixed(2)}s ` +
+              `(${(moved / (ROAD.halfWidth * 2 / ROAD.laneCount)).toFixed(1)} lanes), cooldown refuses a repeat=${refused}`);
+}
+
+// ── 8. Ramp trigger fires exactly once ───────────────────────────────────────
 {
   const sys = T.makeTrafficSystem();
   sys.ramps.push({ x: 0, z: 200, used: false });
@@ -146,7 +165,7 @@ const noInput = { steer: 0 };
     const r = T.checkRampHit(sys, playerBox(p), p.y);
     if (r) { hits++; if (launchPlayer(p)) launched++; }
   }
-  console.log(`7. RAMP     triggered ${hits}× (must be 1), launched ${launched}×, landed ${lands}×`);
+  console.log(`8. RAMP     triggered ${hits}× (must be 1), launched ${launched}×, landed ${lands}×`);
   // Off-lane car should NOT trigger it.
   const sys2 = T.makeTrafficSystem();
   sys2.ramps.push({ x: 0, z: 200, used: false });
