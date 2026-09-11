@@ -41,7 +41,7 @@
     #hud.show { display: block; }
     #speed-wrap { position: absolute; right: calc(env(safe-area-inset-right) + 18px);
       bottom: calc(env(safe-area-inset-bottom) + 18px); text-align: right; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
-    #speed { font-size: 60px; font-weight: 800; line-height: 0.9; letter-spacing: 1px; transition: color 0.15s linear; }
+    #speed { font-size: clamp(32px, 9vh, 60px); font-weight: 800; line-height: 0.9; letter-spacing: 1px; transition: color 0.15s linear; }
     #speed.boost { color: #4ff0d4; text-shadow: 0 0 18px rgba(70,240,210,0.9); }
     /* Tachometer — revs sweep within a gear and snap back on each upshift. The
        rise-drop-rise pulse is what makes the car read as a working machine. */
@@ -51,7 +51,7 @@
       transition: width 0.06s linear, background-color 0.12s linear; }
     #tach.redline { box-shadow: inset 0 0 0 1px rgba(255,90,122,0.9), 0 0 12px rgba(255,90,122,0.55); }
     #gear-row { font-size: 11px; letter-spacing: 3px; opacity: 0.75; margin-top: 3px; }
-    #gear-row b { font-size: 19px; font-weight: 900; color: #ffd24a; letter-spacing: 0; }
+    #gear-row b { font-size: clamp(14px, 3.4vh, 19px); font-weight: 900; color: #ffd24a; letter-spacing: 0; }
     #speed-unit { font-size: 16px; font-weight: 700; opacity: 0.85; letter-spacing: 3px; }
     #tag { position: absolute; top: calc(env(safe-area-inset-top) + 12px);
       left: calc(env(safe-area-inset-left) + 14px); font-size: 12px; letter-spacing: 2px; opacity: 0.7; }
@@ -64,7 +64,7 @@
 
     /* Score (top-center), pass count, combo banner, near-miss flash */
     #score { position: absolute; top: calc(env(safe-area-inset-top) + 8px); left: 50%; transform: translateX(-50%);
-      font-size: 34px; font-weight: 800; letter-spacing: 1px; text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      font-size: clamp(21px, 5.4vh, 34px); font-weight: 800; letter-spacing: 1px; text-shadow: 0 2px 8px rgba(0,0,0,0.6);
       font-variant-numeric: tabular-nums; }
     #passed { position: absolute; top: calc(env(safe-area-inset-top) + 60px); left: calc(env(safe-area-inset-left) + 14px);
       font-size: 12px; letter-spacing: 2px; opacity: 0.75; }
@@ -74,7 +74,7 @@
       opacity: 0; transition: opacity 0.12s; }
     #combo.show { opacity: 1; }
     #combo .lab { font-size: 14px; font-weight: 800; letter-spacing: 3px; color: #ffd24a; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
-    #combo-n { font-size: 44px; font-weight: 900; color: #ffd24a; text-shadow: 0 2px 8px rgba(0,0,0,0.7); line-height: 1; }
+    #combo-n { font-size: clamp(26px, 6.6vh, 44px); font-weight: 900; color: #ffd24a; text-shadow: 0 2px 8px rgba(0,0,0,0.7); line-height: 1; }
     #combo-track { width: 120px; height: 4px; margin: 6px auto 0; background: rgba(255,255,255,0.18); border-radius: 2px; overflow: hidden; }
     #combo-bar { height: 100%; width: 100%; background: #ffd24a; }
     #nearmiss { position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%); opacity: 0;
@@ -130,6 +130,7 @@
       font-size: 12px; letter-spacing: 3px; margin-bottom: 5px; }
     #heat-tier { font-weight: 800; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
     #heat-hint { font-size: 10px; letter-spacing: 2px; opacity: 0.42; }
+    @media (max-height: 430px) { #heat-hint { display: none; } }
     #heat-track { height: 15px; border-radius: 8px; background: rgba(10,12,20,0.66);
       border: 1px solid rgba(255,255,255,0.16); overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.5); }
     #heat-fill { height: 100%; width: 0%; border-radius: 7px;
@@ -161,14 +162,25 @@
     #sector-banner.show { opacity: 1; }
     #sector-banner-idx { font-size: 13px; letter-spacing: 8px; color: #ffc247;
       text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
-    #sector-banner-name { font-size: 54px; font-weight: 900; letter-spacing: 4px; color: #fff;
+    #sector-banner-name { font-size: clamp(28px, 8vh, 54px); font-weight: 900; letter-spacing: 4px; color: #fff;
       text-shadow: 0 0 30px rgba(255,170,60,0.9), 0 3px 0 rgba(0,0,0,0.85), 0 6px 20px rgba(0,0,0,0.95);
       margin: 4px 0 2px; }
     #sector-banner-sub { font-size: 13px; letter-spacing: 5px; color: #e8e2d6;
       text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
 
+    /* Contextual tip — taught once, at the moment it first matters. */
+    #tip { position: absolute; top: 19%; left: 50%; transform: translateX(-50%);
+      max-width: 74vw; padding: 7px 16px; border-radius: 18px;
+      background: rgba(5,7,13,0.82); border: 1px solid rgba(255,194,71,0.45);
+      font-size: 12px; letter-spacing: 2px; color: #ffd98a; text-align: center;
+      opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
+      /* Must WRAP, not clip: the longest tip is 494px and a phone in landscape
+         caps this at 74vw ≈ 493px, so nowrap truncated the last word. */
+      line-height: 1.45; }
+    #tip.show { opacity: 1; }
+
     #mult { position: absolute; top: calc(env(safe-area-inset-top) + 40px); left: calc(env(safe-area-inset-left) + 14px);
-      font-size: 20px; font-weight: 800; letter-spacing: 1px; color: #ffc247;
+      font-size: clamp(14px, 3.6vh, 20px); font-weight: 800; letter-spacing: 1px; color: #ffc247;
       text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
     #pips { display: none; }
     #pips .pip { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.14);
@@ -183,7 +195,8 @@
       right: calc(env(safe-area-inset-right) + 12px); z-index: 30; display: flex; gap: 8px; }
     #toolbar button {
       background: rgba(20,16,40,0.8); color: #fff; border: 2px solid #ff8a4c; border-radius: 8px;
-      padding: 9px 12px; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: 1px; cursor: pointer;
+      padding: clamp(5px, 1.5vh, 9px) clamp(7px, 2vh, 12px); font: inherit;
+      font-size: clamp(9px, 2.5vh, 13px); font-weight: 700; letter-spacing: 1px; cursor: pointer;
     }
     #toolbar button:active { background: rgba(255,138,76,0.85); color: #1a1430; }
     #btn-music { min-width: 44px; }
@@ -277,8 +290,9 @@
        which sets a 40%-wide, 64px-font arrow. Held, not tapped. */
     #steer-controls #btn-nos { left: 50%; right: auto;
       bottom: calc(env(safe-area-inset-bottom) + 12%);
-      transform: translateX(-50%); width: 128px; height: 54px; max-height: 54px;
-      border-radius: 27px; font-size: 15px; font-weight: 900; letter-spacing: 4px;
+      transform: translateX(-50%); width: clamp(92px, 17vw, 128px);
+      height: clamp(38px, 12vh, 54px); max-height: 54px;
+      border-radius: 27px; font-size: clamp(11px, 3vh, 15px); font-weight: 900; letter-spacing: 4px;
       background: rgba(80,220,255,0.16); border: 2px solid rgba(120,235,255,0.6);
       color: #bff2ff; text-shadow: 0 0 10px rgba(90,220,255,0.7);
       box-shadow: 0 0 18px rgba(70,200,255,0.25) inset; transition: opacity 0.2s; }
@@ -292,7 +306,7 @@
     #drift.show { opacity: 1; }
     #drift .lab { font-size: 13px; font-weight: 800; letter-spacing: 5px; color: #8fe7ff;
       text-shadow: 0 0 12px rgba(80,200,255,0.9), 0 2px 6px rgba(0,0,0,0.8); }
-    #drift-t { font-size: 30px; font-weight: 900; color: #d8f6ff; line-height: 1;
+    #drift-t { font-size: clamp(19px, 4.6vh, 30px); font-weight: 900; color: #d8f6ff; line-height: 1;
       text-shadow: 0 0 16px rgba(90,210,255,0.9), 0 2px 8px rgba(0,0,0,0.8); }
     .popup.big       { font-size: 42px; }
     @keyframes popup-rise {
@@ -400,9 +414,10 @@
     <div id="combo"><div class="lab">CHAIN</div><div id="combo-n">×2</div><div id="combo-track"><div id="combo-bar"></div></div></div>
     <div id="nearmiss">NEAR MISS +100</div>
     <div id="drift"><div class="lab">DRIFT</div><div id="drift-t">0.0s</div></div>
-    <div id="rampage-msg">RAMPAGE!</div>
+    <div id="rampage-msg"></div>
+    <div id="tip"><span id="tip-text"></span></div>
     <div id="heat">
-      <div id="heat-label"><span id="heat-tier">COLD</span><span id="heat-hint">TAILGATE · SHAVE · FLY</span></div>
+      <div id="heat-label"><span id="heat-tier">COLD</span><span id="heat-hint">TAILGATE · SHAVE · SLIDE</span></div>
       <div id="heat-track"><div id="heat-fill"></div></div>
     </div>
     <div id="speed-wrap">
@@ -536,9 +551,9 @@
   <div id="tutorial" class="overlay modal-overlay" role="dialog" aria-label="How to play">
     <div class="panel-box">
       <div class="panel-title">HOW TO PLAY</div>
-      <div class="tut-body"><b>HEAT is everything</b> — your speed, your score, your life, and your <b>NOS bottle</b>.<br>It drains constantly. Playing safe kills you.</div>
+      <div class="tut-body"><b>HEAT is everything</b> — your speed, your score, your life, and your <b>NOS bottle</b>.<br>It drains constantly. <b>Playing safe kills you.</b></div>
       <div class="tut-keys"><span>◀ ▶ STEER</span><span>HOLD NOS</span><span>DOUBLE-TAP = DASH</span></div>
-      <div class="tut-body tut-tip">Fill it by taking risk — <b>tailgate</b> and hold the slipstream, <b>swerve out late</b> for the shave, and <b>slide</b> hard through the traffic. Then burn it all on <b>NOS</b>.</div>
+      <div class="tut-body tut-tip">Refill it by driving dangerously. The game will show you how as you go.</div>
       <div class="panel-row">
         <button id="tut-skip" class="ghost-btn">SKIP</button>
         <button id="tut-play" class="big-btn">DRIVE</button>

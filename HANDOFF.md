@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v21` — **bump on every code change** |
+| **Service worker** | `jr3d-v22` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -192,6 +192,7 @@ src/
   heat.js         THE CORE LOOP — one resource: speed + score + life + density
   stages.js       SECTORS — the named, distance-gated chapters a run moves through
   rank.js         lifetime XP → 12 ranks (persistent; deliberately not a power-up)
+  tips.js         once-ever contextual coaching — teaches each system in situ
   scoring.js      score accumulator + localStorage hi-score (distance × heat mult)
   hud.js          DOM HUD, tach/gear, popups, pip meter, game-over panel + letter grade
   ui.js           menu overlay manager (title/name/leaderboard/tutorial/paused) + lb render
@@ -411,6 +412,14 @@ that a ramp triggers exactly once and only in its own lane.
   positive gain used to clear it, and a grazing slipstream frame happens
   constantly in traffic, so the player floated at 0.001 forever and the fire
   could never kill anyone. `HEAT.flameoutClear` is the escape bar now.
+- **The HUD must scale off viewport HEIGHT, not fixed px.** A landscape phone is
+  ~375px tall, so every hard-coded size was roughly double what it should be
+  there: the score collided with the toolbar and the NOS pad sat on the car. The
+  big readouts now use `clamp(min, Nvh, max)` and the heat-bar hint hides under
+  430px. **Check any new HUD element at 667×375, not just on desktop.**
+- **A `nowrap` banner will clip on a phone.** The longest contextual tip is 494px
+  and the 74vw cap on a landscape phone is ~493px, so it silently truncated the
+  last word. Tips wrap now.
 - **`road.reset()` must be called on every fresh run — and it now is.** `prune()` only ever moves
   the centerline's `baseI` FORWARD, so after ~570 units the samples for small `z` are gone. A restart
   puts the player back at `z = 0`, where `centerlineAt` clamped to `baseI` and then *extrapolated*

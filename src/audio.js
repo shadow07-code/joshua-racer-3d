@@ -300,6 +300,33 @@ export function sfxGameOver() {
   });
 }
 
+// ── TYRE SCREECH ── held while the car is sliding. A drift you can hear is
+// worth far more than one you can only see: this is the feedback that tells the
+// player they are doing the thing the game is rewarding, without a HUD readout.
+let skidSrc = null, skidGain = null, skidFilt = null;
+export function startSkid() {
+  if (!ctx || skidSrc) return;
+  skidSrc = ctx.createBufferSource(); skidSrc.buffer = getNoiseBuf(); skidSrc.loop = true;
+  skidFilt = ctx.createBiquadFilter(); skidFilt.type = "bandpass"; skidFilt.frequency.value = 1500; skidFilt.Q.value = 5.5;
+  skidGain = ctx.createGain(); skidGain.gain.value = 0;
+  skidSrc.connect(skidFilt); skidFilt.connect(skidGain); skidGain.connect(sfxGain);
+  skidSrc.start();
+}
+export function setSkidLevel(l) {
+  if (!skidGain || !ctx) return;
+  const t = ctx.currentTime, v = Math.max(0, Math.min(1, l));
+  skidGain.gain.setTargetAtTime(0.085 * v, t, 0.04);
+  // Pitch rises with how hard the car is crossing the road, so a committed
+  // slide squeals and a lazy one just hisses.
+  skidFilt.frequency.setTargetAtTime(1100 + 1500 * v, t, 0.06);
+}
+export function stopSkid() {
+  if (!skidSrc) return;
+  try { skidSrc.stop(); } catch {}
+  skidSrc.disconnect(); skidGain.disconnect(); skidFilt.disconnect();
+  skidSrc = skidGain = skidFilt = null;
+}
+
 // ── NITROUS ── a held roar: the crack of the bottle, then a resonant blast whose
 // brightness tracks how far the spool has wound in.
 let nosSrc = null, nosGain = null, nosFilt = null;

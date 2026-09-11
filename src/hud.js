@@ -22,6 +22,7 @@ export function makeHud(onPlayAgain) {
   const comboEl = el("combo"), comboN = el("combo-n"), comboBar = el("combo-bar");
   const nearmissEl = el("nearmiss"), crashEl = el("crash-flash");
   const driftEl = el("drift"), driftT = el("drift-t"), nosBtn = el("btn-nos");
+  const tipEl = el("tip"), tipText = el("tip-text");
   const rampMsgEl = el("rampage-msg"), rampTintEl = el("rampage-tint");
   const goPanel = el("gameover"), goScore = el("go-score"), goBest = el("go-best"),
     goNew = el("go-new"), goPassed = el("go-passed"), goTime = el("go-time"),
@@ -61,6 +62,17 @@ export function makeHud(onPlayAgain) {
     bannerTimer = setTimeout(() => banner.classList.remove("show"), 1900);
   }
   function clearSector() { if (banner) banner.classList.remove("show"); clearTimeout(bannerTimer); }
+
+  // A one-off coaching line, held long enough to read at speed.
+  let tipTimer = null;
+  function tip(text) {
+    if (!tipEl) return;
+    if (tipText) tipText.textContent = text;
+    tipEl.classList.add("show");
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(() => tipEl.classList.remove("show"), 3400);
+  }
+  function clearTip() { if (tipEl) tipEl.classList.remove("show"); clearTimeout(tipTimer); }
 
   const fmt = (n) => Math.floor(n).toLocaleString();
 
@@ -168,5 +180,5 @@ export function makeHud(onPlayAgain) {
   }
   function hideGameOver() { if (goPanel) goPanel.classList.remove("show"); }
 
-  return { update, showGameOver, hideGameOver, popup, clearPopups, sector, clearSector };
+  return { update, showGameOver, hideGameOver, popup, clearPopups, sector, clearSector, tip, clearTip };
 }

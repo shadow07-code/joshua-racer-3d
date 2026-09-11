@@ -49,9 +49,7 @@ export const ROAD = {
 
 // Endless-survival rules (subset used so far; rest copied as phases land).
 export const RACE = {
-  countdownSeconds: 3,
   comboKmh: 100,
-  comboWindow: 2.8,
   // Police helicopter: flies in once the player crosses copTriggerKmh and drops
   // flaming barrels (a hit bills heat like any other crash).
   copTriggerKmh: 150,
@@ -68,8 +66,6 @@ export const RACE = {
 };
 
 export const SPAWN = {
-  trafficRowGap: 72,
-  sceneryPerMeter: 0.22,
 };
 
 export const SCORE = {
@@ -149,7 +145,6 @@ export const KEYS = {
   left:  ["ArrowLeft", "a", "A"],
   right: ["ArrowRight", "d", "D"],
   pause: ["p", "P", " "],
-  enter: ["Enter", " "],
 };
 
 // ── Deeper-fun systems (oncoming lane, nitro, jumps, nightfall) ───────────────
@@ -183,7 +178,6 @@ export const NITRO = {
 // real arc. Airborne = no traffic collisions (the car is above them), so a ramp
 // is both a spectacle and a deliberate escape hatch from a bad row.
 export const JUMP = {
-  startSeconds: 20,        // ramps start appearing after the opening
   chance: 0.13,            // per spawned row
   minGapZ: 620,            // never two ramps closer than this
   takeoffVy: 34,           // launch velocity (world units/s) — ~1.6s of air

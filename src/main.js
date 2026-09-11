@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { PHYS, STEER, SCORE, RACE, ONCOMING, NITRO, JUMP, NIGHT, HEAT, CHAIN, NOS, DRIFT } from "./config.js";
 import { sectorIndexAt, sectorAt, nextSectorZ, sectorStartZ } from "./stages.js";
 import { currentRank, bankRun } from "./rank.js";
+import { tipOnce, TIPS } from "./tips.js";
 import {
   makeHeat, addHeat, updateHeat, heatSpeed01, heatScoreMul, heatDensity, tierOf, TIERS,
 } from "./heat.js";
@@ -18,6 +19,7 @@ import {
   initAudio, resumeAudio, suspendAudio, startEngine, stopEngine, setEngine, setEngineRampage,
   sfxNearMiss, sfxCombo, sfxBump, sfxCrash, sfxRampage, sfxShockwave, sfxBarrelDrop, sfxGameOver, sfxCoin, sfxShift,
   sfxNitro, sfxHorn, sfxLaunch, sfxLand, sfxAlert, startNos, stopNos, setNosLevel,
+  startSkid, stopSkid, setSkidLevel,
   startHeliSound, stopHeliSound, isSfxEnabled, toggleSfx,
 } from "./audio.js";
 import { makePlayer, updatePlayer, playerBox, applyCollisionLoss, launchPlayer, dashPlayer, cancelDrift } from "./entities/player.js";
@@ -81,7 +83,7 @@ let sectorIdx = 1, sector = sectorAt(1), sectorBest = 1;
 // HEAT — the one resource the game runs on. See src/heat.js for why.
 const heat = makeHeat();
 let draftT = 0, draftStreak = 0, dashCount = 0;
-let nosTime = 0, driftTime = 0, bestDrift = 0, nosSoundOn = false;
+let nosTime = 0, driftTime = 0, bestDrift = 0, nosSoundOn = false, skidOn = false;
 
 // ── Game state + scoring ──
 const STATE = {
@@ -159,6 +161,7 @@ function resetWorld() {
   cancelDrift(player);
   nosTime = 0; driftTime = 0; bestDrift = 0;
   if (nosSoundOn) { stopNos(); nosSoundOn = false; }
+  if (skidOn) { stopSkid(); skidOn = false; }
   traffic.list.length = 0; traffic.coins.length = 0; traffic.nextRowZ = 80; traffic.lastGapLane = 2;
   traffic.rowsSpawned = 0; traffic.passedCount = 0; traffic.rowGapZ = SPAWN_ROW_GAP;
   traffic.nitros.length = 0; traffic.ramps.length = 0;
@@ -182,6 +185,7 @@ function resetWorld() {
   juice.resetJuice();
   hud.clearPopups();
   hud.clearSector();
+  hud.clearTip();
 }
 
 // ── State transitions ──
@@ -282,6 +286,7 @@ function endRun() {
   setEngineRampage(false); stopEngine();
   if (heliSoundOn) { stopHeliSound(); heliSoundOn = false; }
   if (nosSoundOn) { stopNos(); nosSoundOn = false; }
+  if (skidOn) { stopSkid(); skidOn = false; }
   sfxGameOver();
   const run = {
     score: Math.floor(score.score), best: bestEverScore(), isNew,
@@ -478,7 +483,10 @@ function stepRace(dt) {
     hud.sector(sector);
     sfxAlert(); juice.addShake(0.3);
     addHeat(heat, HEAT.sectorBonus);              // a clean top-up for getting here
-    if (sector.oncoming && !traffic.oncomingOn) startOncoming(traffic, player.z);
+    if (sector.oncoming && !traffic.oncomingOn) {
+      startOncoming(traffic, player.z);
+      if (tipOnce("oncoming")) hud.tip(TIPS.oncoming);
+    }
   }
   // Nightfall eases toward whatever the sector asks for, rather than running off
   // a wall-clock — so the world darkens because you got further, not older.
@@ -625,10 +633,29 @@ function stepRace(dt) {
   } else if (draftStreak > 0) {
     // A slipstream only LINKS if you actually held it — leaning on someone's
     // bumper for a moment is the risk; brushing past them is not.
-    if (draftStreak > CHAIN.draftMin) { hud.popup("SLIPSTREAM", "nitro"); linkChain(); }
+    if (draftStreak > CHAIN.draftMin) {
+      if (draftStreak > 1.0) hud.popup("SLIPSTREAM", "nitro");   // only the real ones
+      linkChain();
+    }
     draftStreak = 0;
   }
   if (player.airborne) addHeat(heat, HEAT.airRate * chainMul() * dt);
+
+  // A slide you can HEAR is worth far more than one you can only see — this is
+  // what tells the player they are doing the thing the game rewards.
+  const skidding = player.drifting && !player.airborne;
+  if (skidding && !skidOn) { startSkid(); skidOn = true; }
+  else if (!skidding && skidOn) { stopSkid(); skidOn = false; }
+  if (skidOn) setSkidLevel(Math.min(1, Math.abs(player.vx) / PHYS.steerSpeed));
+
+  // Teach each mechanic the first time it is ever relevant, once ever. The
+  // tutorial card cannot carry nine systems; this can, at the moment each starts
+  // to matter. One at a time, so a first run is coached rather than lectured.
+  if (draftStreak > 0.35 && tipOnce("draft")) hud.tip(TIPS.draft);
+  else if (player.drifting && player.driftT > 0.3 && tipOnce("drift")) hud.tip(TIPS.drift);
+  else if (heat.v > 0.5 && tipOnce("nos")) hud.tip(TIPS.nos);
+  else if (heat.v < 0.18 && raceTime > 6 && tipOnce("lowHeat")) hud.tip(TIPS.lowHeat);
+  else if (chain >= 5 && tipOnce("chain")) hud.tip(TIPS.chain);
 
   const hev = {};
   updateHeat(heat, dt, hev);
