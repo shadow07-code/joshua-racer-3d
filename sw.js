@@ -2,7 +2,7 @@
 // Network-first for the app shell (HTML/JS/manifest) so deploys roll out live;
 // cache-first for heavy static assets (vendored Three.js, music, icons). Falls
 // back to cache when offline so the installed PWA still launches.
-const VERSION = "jr3d-v22";
+const VERSION = "jr3d-v23";
 const ASSETS = [
   "./",
   "./index.html",
@@ -24,6 +24,7 @@ const ASSETS = [
   "./src/leaderboard.js",
   "./src/juice.js",
   "./src/heat.js",
+  "./src/curve.js",
   "./src/stages.js",
   "./src/rank.js",
   "./src/tips.js",
@@ -38,6 +39,7 @@ const ASSETS = [
   "./src/render3d/cops3d.js",
   "./src/render3d/scene.js",
   "./src/render3d/road.js",
+  "./src/render3d/particles.js",
   "./src/render3d/models.js",
   "./src/render3d/camera.js",
   "./src/render3d/scenery.js",

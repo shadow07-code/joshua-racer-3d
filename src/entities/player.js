@@ -2,7 +2,7 @@
 // rubber-fence edges. PORTED from the 2D reference (src/entities/player.js); the
 // drawing is gone (render3d/models.js owns that). `x` is the lateral offset from
 // the road CENTERLINE — pure scalar, so the curve never touches this math.
-import { PHYS, ROAD, JUMP, DASH, NOS, DRIFT } from "../config.js";
+import { PHYS, ROAD, JUMP, DASH, NOS, DRIFT, BRAKE } from "../config.js";
 
 export function makePlayer() {
   return {
@@ -16,6 +16,8 @@ export function makePlayer() {
     throttle01: 0.6, // target speed as a fraction of top — written by the HEAT model
     nosOn: false,    // is the player holding nitrous AND is there heat to burn
     nos: 0,          // 0..1 spool level (eased, so NOS punches rather than snaps)
+    braking: false,  // is the player on the brake this frame
+    brakeBlend: 0,   // 0..1 eased brake — weight transfer, not a switch
     drifting: false, // mid-slide
     driftT: 0,       // seconds of the current slide
     driftSum: 0,     // integral of |slip| over it — "how hard", not just "how long"
@@ -58,10 +60,26 @@ export function updatePlayer(p, dt, input, callbacks) {
   p.nos += Math.max(-nosRate, Math.min(nosRate, nosTarget - p.nos));
   p.nos = Math.max(0, Math.min(1, p.nos));
 
-  const target = PHYS.maxSpeed * (p.throttle01 != null ? p.throttle01 : 0.6)
+  // ── BRAKE ── The verb this game spent four redesigns without. Speed used to be
+  // a pure readout of HEAT: you could ask for more of it, never less. That is why
+  // the slipstream, the mechanic the whole economy is built on, could not be
+  // HELD — the car outran every civilian on the road by construction, so a tow
+  // lasted about a second and a half no matter how well you drove it.
+  //
+  // Braking is not an escape hatch. Heat drains on a clock whatever your speed
+  // and score is distance times heat, so every second on the brake is points you
+  // did not bank and fuel you did not replace. What it buys is a LINE: match a
+  // truck's pace and live in its wake, scrub off speed into a wall of traffic,
+  // arrive at a row already set up instead of hoping.
+  const braking = !!input.brake && !p.airborne;
+  p.braking = braking;
+  p.brakeBlend += ((braking ? 1 : 0) - p.brakeBlend) * Math.min(1, dt * 9);
+
+  const heatTarget = PHYS.maxSpeed * (p.throttle01 != null ? p.throttle01 : 0.6)
     * (1 + (NOS.speedMul - 1) * p.nos);
+  const target = braking ? Math.min(heatTarget, PHYS.maxSpeed * BRAKE.floor01) : heatTarget;
   if (p.speed < target) p.speed = Math.min(target, p.speed + PHYS.accel * dt);
-  else if (p.speed > target) p.speed = Math.max(target, p.speed - PHYS.drag * dt);
+  else if (p.speed > target) p.speed = Math.max(target, p.speed - (braking ? BRAKE.power : PHYS.drag) * dt);
   if (p.speed < 4) p.speed = 4;
 
   // Steering — asymmetric ease (ported from the fun 2D game): a GENTLE onset from
@@ -78,7 +96,11 @@ export function updatePlayer(p, dt, input, callbacks) {
   const steer = p.steerSmooth;
   p.steerVis = p.steerSmooth;
   const speedFrac = p.speed / PHYS.maxSpeed;
-  const steerScale = 1 - (1 - PHYS.steerSpeedFactor) * speedFrac;
+  // Weight transfers onto the nose under braking, so the front bites harder and
+  // the mass follows it sooner. "Brake to turn" is the oldest feel trick in
+  // racing and it is what makes the brake a driving tool rather than a pause.
+  const steerScale = (1 - (1 - PHYS.steerSpeedFactor) * speedFrac)
+    * (1 + BRAKE.steerBonus * p.brakeBlend);
 
   // LATERAL MOMENTUM. Steering sets a TARGET sideways velocity; the car's actual
   // vx chases it at `grip`, so the mass takes a moment to follow the wheels — and
@@ -97,7 +119,7 @@ export function updatePlayer(p, dt, input, callbacks) {
     p.vx = p.dashDir * DASH.vx;
     p.slip = p.dashDir * 0.85;                    // big yaw so a dash READS as one
   } else {
-    p.vx += (targetVx - p.vx) * Math.min(1, dt * PHYS.grip);
+    p.vx += (targetVx - p.vx) * Math.min(1, dt * PHYS.grip * (1 + BRAKE.gripBonus * p.brakeBlend));
     p.slip = Math.max(-1, Math.min(1, (targetVx - p.vx) / PHYS.steerSpeed));
   }
   p.x += p.vx * dt;

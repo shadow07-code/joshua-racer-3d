@@ -14,7 +14,9 @@ const TOTAL_HALF = ROAD.halfWidth + ROAD.shoulder;   // 63
 // and, more importantly, so the bridge deck has real air beneath it.
 const SEA_Y = -8.5;
 const EMB = 108;                                      // sand half-width
-const EMB_EDGE = 132;                                 // slopes down to the sea here
+// The road climbs up to ~30 units above the waterline now, and the beach has to
+// swallow that drop without turning into a sand cliff — so the slope is wide.
+const EMB_EDGE = 196;                                 // slopes down to the sea here
 
 // Ribbon coverage window (matches the road).
 const BEHIND = 40, AHEAD = 320, STEP = 6;
@@ -72,6 +74,10 @@ export function makeEnvironment(scene, road) {
   // ── Sand causeway (4-vert cross-section: sea-edge → flat → flat → sea-edge) ──
   const EMB_N = 4;
   const embX = [-EMB_EDGE, -EMB, EMB, EMB_EDGE];
+  // Only the two inner (road-side) verts follow the road up and down; the outer
+  // pair is pinned at the waterline, so a climb just steepens the beach rather
+  // than lifting the whole shoreline out of the sea.
+  const embRides = [false, true, true, false];
   const embY = [SEA_Y, -0.05, -0.05, SEA_Y];
   const embGeo = new THREE.BufferGeometry();
   const embPos = new Float32Array(RINGS * EMB_N * 3);
@@ -177,7 +183,9 @@ export function makeEnvironment(scene, road) {
       for (let k = 0; k < EMB_N; k++) {
         road.worldPos(z, embX[k], v);
         const o = (r * EMB_N + k) * 3;
-        embPos[o] = v.x; embPos[o + 1] = embY[k] - sink; embPos[o + 2] = v.z;
+        embPos[o] = v.x;
+        embPos[o + 1] = (embRides[k] ? v.y + embY[k] : embY[k]) - sink;
+        embPos[o + 2] = v.z;
       }
     }
     embGeo.attributes.position.needsUpdate = true;
@@ -195,7 +203,7 @@ export function makeEnvironment(scene, road) {
       for (let k = 0; k < n; k++) {
         road.worldPos(z, xs[k], v);
         const o = (r * n + k) * 3;
-        pos[o] = v.x; pos[o + 1] = ys[k]; pos[o + 2] = v.z;
+        pos[o] = v.x; pos[o + 1] = ys[k] + v.y; pos[o + 2] = v.z;
       }
     }
     seg.geometry.attributes.position.needsUpdate = true;
@@ -220,7 +228,7 @@ export function makeEnvironment(scene, road) {
       if (zoneTypeAt(z) === "tunnel" && li < LIGHT_POOL) {
         road.worldPos(z, 0, v);
         const lm = lights[li++];
-        lm.position.set(v.x, APEX - 1.6, v.z);
+        lm.position.set(v.x, v.y + APEX - 1.6, v.z);
         lm.rotation.y = road.headingAt(z);
         lm.visible = true;
       }
@@ -251,7 +259,7 @@ export function makeEnvironment(scene, road) {
       if (ti < TOWER_POOL) {
         const g = towers[ti++];
         road.worldPos(z, 0, v);
-        g.position.set(v.x, 0, v.z);
+        g.position.set(v.x, v.y, v.z);
         g.rotation.y = road.headingAt(z);
         g.visible = true;
       }
@@ -262,8 +270,8 @@ export function makeEnvironment(scene, road) {
         const lat = side * PYLON_X;
         for (let i = 0; i < CABLE_SAMPLES; i++) {
           const u0 = i / CABLE_SAMPLES, u1 = (i + 1) / CABLE_SAMPLES;
-          road.worldPos(z + u0 * TOWER_SPACING, lat, _a); _a.y = cableY(u0);
-          road.worldPos(z + u1 * TOWER_SPACING, lat, _b); _b.y = cableY(u1);
+          road.worldPos(z + u0 * TOWER_SPACING, lat, _a); const deckY0 = _a.y; _a.y += cableY(u0);
+          road.worldPos(z + u1 * TOWER_SPACING, lat, _b); _b.y += cableY(u1);
           if (ci < CABLE_COUNT) {
             dummy.position.copy(_a).lerp(_b, 0.5);
             dummy.scale.set(1, 1, _a.distanceTo(_b));
@@ -272,8 +280,8 @@ export function makeEnvironment(scene, road) {
             cables.setMatrixAt(ci++, dummy.matrix);
           }
           if (i > 0 && i % HANGER_EVERY === 0 && hi < HANGER_COUNT) {
-            const drop = _a.y - PARAPET_H;
-            dummy.position.set(_a.x, PARAPET_H + drop / 2, _a.z);
+            const drop = _a.y - (deckY0 + PARAPET_H);
+            dummy.position.set(_a.x, deckY0 + PARAPET_H + drop / 2, _a.z);
             dummy.rotation.set(0, 0, 0);
             dummy.scale.set(1, drop, 1);
             dummy.updateMatrix();
@@ -323,7 +331,10 @@ export function makeEnvironment(scene, road) {
 // a neon strip up the inner face of each leg (dead at dusk, blazing at night).
 function makeTower(steelMat, neonMat) {
   const g = new THREE.Group();
-  const footY = SEA_Y - 3;
+  // The group is planted on the DECK, which now rides the road's grade, so the
+  // legs are sunk deep enough that they are still underwater at the top of the
+  // tallest crest (the sea is opaque, so over-length costs nothing).
+  const footY = SEA_Y - 46;
   const legH = TOWER_H - footY;
   for (const side of [-1, 1]) {
     const leg = new THREE.Mesh(new THREE.BoxGeometry(3.6, legH, 3.6), steelMat);

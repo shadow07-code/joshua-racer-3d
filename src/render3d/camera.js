@@ -15,6 +15,7 @@ export function makeChaseCam(camera, road) {
   const desiredPos = new THREE.Vector3();
   const desiredLook = new THREE.Vector3();
   let inited = false;
+  let roll = 0;
 
   function computeDesired(player) {
     // Speed-reactive dolly: the faster you go, the further back and the LOWER the
@@ -48,8 +49,16 @@ export function makeChaseCam(camera, road) {
     look.lerp(desiredLook, approach(cp.lookDampK, dt));
 
     camera.position.copy(pos);
-    camera.up.set(0, 1, 0);            // locked horizon — no roll, ever
+    camera.up.set(0, 1, 0);
     camera.lookAt(look);
+    // A FEW DEGREES OF ROLL. The horizon used to be welded level, which is
+    // comfortable and totally inert — a racing camera that never tips reads like
+    // a camera on a rail rather than one bolted to a car. Driven by lateral
+    // VELOCITY, not by the button, so it arrives with the slide and settles with
+    // it; Comfort Mode sets cp.roll to 0 and gets the old locked horizon back.
+    const targetRoll = -(player.vx || 0) / PHYS.steerSpeed * (cp.roll || 0);
+    roll += (targetRoll - roll) * approach(5.5, dt);
+    if (Math.abs(roll) > 0.0002) camera.rotateZ(roll);
 
     if (fov != null && Math.abs(camera.fov - fov) > 0.01) {
       camera.fov = fov;
@@ -60,7 +69,7 @@ export function makeChaseCam(camera, road) {
   // Force the next update() to jump straight to the target instead of damping.
   // Called on every fresh run so a reset to z=0 doesn't leave the camera gliding
   // in from the old position (which made the car look skewed/"sideways").
-  function snap() { inited = false; }
+  function snap() { inited = false; roll = 0; }
 
   return { update, snap };
 }

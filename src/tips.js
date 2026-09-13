@@ -37,7 +37,9 @@ export function resetTips() {
 }
 
 export const TIPS = {
-  draft:    "TAILGATE — hold the slipstream, then swerve out late",
+  brake:    "BRAKE — hold it to match a car's pace and sit in its tow",
+  draft:    "TAILGATE — hold the slipstream, then break out late",
+  slingshot:"SLINGSHOT — shave the car you were towing off for double",
   lowHeat:  "BURNING OUT — take a risk or the run ends",
   nos:      "HOLD NOS — burn heat for speed",
   drift:    "SLIDE — commit to the cut and the drift scores",

@@ -11,6 +11,7 @@
 // canvas texture (UV.v = world distance), so dashes flow toward the player.
 import * as THREE from "three";
 import { CURVE, ROAD, WORLD, ONCOMING } from "../config.js";
+import { curveAt, elevAt, gradeAt } from "../curve.js";
 
 const STEP = CURVE.step;                       // centerline sample spacing
 const TOTAL_HALF = ROAD.halfWidth + ROAD.shoulder;
@@ -19,11 +20,6 @@ const TILE_LEN = 32;                           // world units per texture repeat
 // Ribbon window around the car.
 const BEHIND = 40, AHEAD = 320, RING_STEP = 4;
 const RINGS = Math.round((BEHIND + AHEAD) / RING_STEP) + 1;
-
-function curveAt(d) {
-  return CURVE.amp1 * Math.sin(d * CURVE.freq1) +
-         CURVE.amp2 * Math.sin(d * CURVE.freq2 + CURVE.phase2);
-}
 
 export function makeRoad(scene) {
   // ── Centerline sample store (global index i ↔ distance i*STEP) ──
@@ -65,7 +61,7 @@ export function makeRoad(scene) {
   // the sign choice invisible everywhere except the steer direction.
   function worldPos(zDist, lat, out) {
     const c = centerlineAt(zDist);
-    out.set(c.x - lat * c.cos, WORLD.groundY, c.z + lat * c.sin);
+    out.set(c.x - lat * c.cos, WORLD.groundY + elevAt(zDist), c.z + lat * c.sin);
     return out;
   }
   function headingAt(zDist) { return centerlineAt(zDist).th; }
@@ -97,7 +93,7 @@ export function makeRoad(scene) {
   const positions = new Float32Array(RINGS * 2 * 3);
   const uvs = new Float32Array(RINGS * 2 * 2);
   const normals = new Float32Array(RINGS * 2 * 3);
-  for (let i = 0; i < RINGS * 2; i++) normals[i * 3 + 1] = 1;   // all face up
+  for (let i = 0; i < RINGS * 2; i++) normals[i * 3 + 1] = 1;   // seeded flat; update() re-grades them
   const indices = [];
   for (let r = 0; r < RINGS - 1; r++) {
     const a = r * 2, b = r * 2 + 1, c = (r + 1) * 2, d = (r + 1) * 2 + 1;
@@ -132,11 +128,30 @@ export function makeRoad(scene) {
       uvs[uo] = 0; uvs[uo + 1] = v;
       uvs[uo + 2] = 1; uvs[uo + 3] = v;
     }
+    // The road now climbs and falls, so the normal has to tilt with it or a crest
+    // catches exactly the same light as a flat straight and the grade vanishes.
+    // Cheap: the ribbon is two vertices per ring, so the normal is just the
+    // cross product of the along-road tangent with the across-road vector.
+    for (let r = 0; r < RINGS; r++) {
+      const rp = Math.min(RINGS - 1, r + 1), rm = Math.max(0, r - 1);
+      const a = rp * 6, b = rm * 6, o = r * 6;
+      // tangent (forward), from the left edge of the neighbouring rings
+      const tx = positions[a] - positions[b], ty = positions[a + 1] - positions[b + 1], tz = positions[a + 2] - positions[b + 2];
+      // lateral (left edge -> right edge of this ring)
+      const lx = positions[o + 3] - positions[o], ly = positions[o + 4] - positions[o + 1], lz = positions[o + 5] - positions[o + 2];
+      let nx = ty * lz - tz * ly, ny = tz * lx - tx * lz, nz = tx * ly - ty * lx;
+      const len = Math.hypot(nx, ny, nz) || 1;
+      nx /= len; ny /= len; nz /= len;
+      if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+      normals[o] = nx; normals[o + 1] = ny; normals[o + 2] = nz;
+      normals[o + 3] = nx; normals[o + 4] = ny; normals[o + 5] = nz;
+    }
     posAttr.needsUpdate = true;
     uvAttr.needsUpdate = true;
+    geo.attributes.normal.needsUpdate = true;
   }
 
-  return { mesh, update, reset, worldPos, headingAt, centerlineAt };
+  return { mesh, update, reset, worldPos, headingAt, centerlineAt, elevAt, gradeAt };
 }
 
 // Cross-section texture (u across the full width incl. shoulders, v along road).

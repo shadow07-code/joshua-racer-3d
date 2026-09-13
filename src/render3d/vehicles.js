@@ -129,9 +129,14 @@ export function makeTrafficView(scene, road) {
       if (!g) { g = makeVehicleMesh(car.skin, car.oncoming); scene.add(g); meshes.set(car, g); }
 
       road.worldPos(car.z, car.x, v);
-      g.position.set(v.x, 0, v.z);
-      // Opposing traffic faces back down the road at the player.
-      g.rotation.y = road.headingAt(car.z) + (car.oncoming ? Math.PI : 0);
+      g.position.set(v.x, v.y, v.z);          // the road has a grade now — ride it
+      // Opposing traffic faces back down the road at the player. YXZ order so the
+      // yaw is applied first and the pitch is then about the car's OWN long axis:
+      // a bus is 22 units long, so on a 5% grade its nose would otherwise bury
+      // itself in the tarmac or hang a foot in the air.
+      g.rotation.order = "YXZ";
+      const onc = car.oncoming ? -1 : 1;
+      g.rotation.set(-road.gradeAt(car.z) * onc, road.headingAt(car.z) + (car.oncoming ? Math.PI : 0), 0);
 
       const ud = g.userData;
       // Everyone's lamps come up after dark; oncoming cars run a touch hotter

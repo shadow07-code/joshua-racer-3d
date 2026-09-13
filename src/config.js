@@ -113,6 +113,12 @@ export const CAMERA = {
   // because it's tied to speed you FEEL acceleration as the world pulls away.
   backAtSpeed: 7,    // extra distance behind at top speed
   dropAtSpeed: 2.6,  // how much lower the camera sits at top speed
+  // A LITTLE ROLL. The horizon used to be welded level, which is comfortable and
+  // completely inert — a racing camera that never tips reads like a camera on a
+  // rail rather than a car. This is a few degrees, driven by actual lateral
+  // velocity (so it arrives WITH the slide, not with the button), and Comfort
+  // Mode zeroes it. Small enough to feel and too small to disorient.
+  roll: 0.055,       // radians of camera roll at full lateral velocity
   fov: 66,           // FOV (Comfort Mode narrows it)
   near: 1,
   far: 700,
@@ -135,6 +141,24 @@ export const CURVE = {
   step: 4,           // centerline sample spacing (world units)
   amp1: 0.00070, freq1: 0.00160,
   amp2: 0.00045, freq2: 0.00072, phase2: 1.3,
+  // ELEVATION y(z) — crests and dips, as a sum of two slow sines. A dead-flat
+  // ribbon is the single loudest "this is a small web game" tell there is: the
+  // horizon never moves, so nothing ever reads as distance. With a grade the
+  // frame breathes — you crest a rise and the road drops out of sight, you sink
+  // into a dip and the world closes in — and it pays gameplay too, because a
+  // crest briefly HIDES the next row of traffic and makes reading the road a
+  // skill. Unlike the curvature these are NOT integrated: elevation is a direct
+  // function of distance, so it needs no sample store and can never drift.
+  // Offset by (amp1+amp2) so the road is always at or above y=0 and therefore
+  // always above the sea (environment.js SEA_Y).
+  // WAVELENGTH MATTERS MORE THAN AMPLITUDE. The first pass used ~700-unit hills,
+  // which sounds generous until you notice the view is 320 units deep: a whole
+  // crest fitted inside the frame and climb cancelled descent, so the net change
+  // across the visible road was 4 units and the whole effect read as flat. These
+  // are ~1100 and ~2600, so you spend seconds climbing toward a horizon you
+  // cannot see past, crest it, and watch the road fall away.
+  elevAmp1: 9.0, elevFreq1: 0.00571,          // ~1100-unit hills
+  elevAmp2: 6.0, elevFreq2: 0.00242, elevPhase2: 2.1,
 };
 
 export const FOG = {
@@ -225,6 +249,16 @@ export const HEAT = {
   draftRate: 0.42,         // per second at the bumper, falling off to 0 at draftRange
   draftRange: 62,          // how far back the slipstream reaches
   draftLateral: 7,         // how well lined up you have to be
+  // THE TOW RUNS OUT. Once the brake exists a draft can be held indefinitely,
+  // and at the opening rate that would be a heat fountain — park behind a bus,
+  // never take another risk, win. So the value of a tow decays the longer you
+  // sit in it: rich for the first beat, and by ~3s worth less than the bar is
+  // draining. Holding is still correct, parking never is, and the shape of the
+  // mechanic stays exactly what it always wanted to be — close, hold, break out.
+  draftFade: 1.6,          // e-folding time of the decay, in seconds held
+  draftFadeFloor: 0.12,    // ...and what fraction it bottoms out at — BELOW the
+                           // idle drain rate, so a parked tow always loses ground
+  draftLinkEvery: 1.1,     // a held tow links the CHAIN this often, so it stays lit
   airRate: 0.16,           // per second airborne
   coin: 0.03,
   canister: 0.28,          // nitro pickups are now heat pickups
@@ -333,4 +367,45 @@ export const DRIFT = {
   // pay out at all — the better you drift, the less you got. Long slides bank
   // on this interval and carry on, which also gives them a rhythm.
   maxSeconds: 3.0,
+};
+
+// ── BRAKE ────────────────────────────────────────────────────────────────────
+// The verb the game was missing. Until now the only longitudinal control was
+// NOS: speed was whatever HEAT said it was, and the player could go faster but
+// never slower. That is why the slipstream — the signature mechanic — could not
+// be HELD: the car outran every civilian on the road by design, so a tow was a
+// ~1.5-second accident rather than something you chose and worked at.
+//
+// Braking is not a safety valve, because nothing in the economy rewards being
+// slow: heat drains on a clock whatever your speed, and score is distance times
+// heat. Every second on the brake is score you did not earn and heat you did not
+// replace. What it buys is CONTROL — match a truck's pace and sit in its wake,
+// scrub speed into a wall of traffic, set up the line instead of arriving at it.
+export const BRAKE = {
+  // Lowest speed the brake will pull you down to, as a fraction of top. Chosen
+  // to sit just under the quickest civilian traffic (~0.40 of cruise) so that
+  // matching pace behind ANY car is reachable, and a bus is still something you
+  // slowly close on rather than sit behind forever.
+  floor01: 0.30,
+  power: 52,               // deceleration — vs PHYS.drag 5, so it BITES
+  // Weight transfers onto the nose under braking, so the front bites harder.
+  // "Brake to turn" is the oldest feel trick in racing and it costs nothing.
+  steerBonus: 0.30,        // extra lateral authority while hard on the brakes
+  gripBonus: 0.55,         // ...and the mass follows the wheels faster too
+};
+
+// ── SLINGSHOT ────────────────────────────────────────────────────────────────
+// The move the whole design was pointing at without ever naming it: sit in a
+// car's wake, then break out and take the shave on the way past. Drafting and
+// near-missing were two separate systems that happened to be adjacent; making
+// the pair into one named, extra-paying move turns a habit into a technique.
+export const SLINGSHOT = {
+  // Breaking out of a tow and actually getting PAST the car takes real time: you
+  // leave at roughly matched pace and have to re-accelerate 30-odd u/s to close
+  // the last 16 units. Measured in the harness that is ~1.2s, so a 0.7s window
+  // meant the move could be executed perfectly and never once register.
+  window: 1.6,             // seconds after leaving a tow that the shave still counts
+  minDraft: 0.5,           // ...and how long you had to have held it
+  heatMul: 1.8,
+  scoreMul: 2.2,
 };

@@ -120,6 +120,18 @@ export function heatScoreMul(h) {
   return 1 + HEAT.scoreMul * h.v + (h.overdrive ? HEAT.overdriveScoreBonus : 0);
 }
 
+// THE TOW RUNS OUT. Multiplier on the slipstream's value, by how long the tow has
+// been held continuously. Before the brake existed this could not matter — the
+// car outran every civilian by construction, so no draft lasted more than a
+// second or two. Now that a player can match pace and sit there, an undecayed
+// draft would be a heat fountain: park behind a bus, never take another risk,
+// win. Rich for the first beat, and by ~3s worth less than the bar is draining,
+// so holding is still correct and parking never is.
+export function draftFalloff(heldSeconds) {
+  const t = Math.max(0, heldSeconds);
+  return HEAT.draftFadeFloor + (1 - HEAT.draftFadeFloor) * Math.exp(-t / HEAT.draftFade);
+}
+
 // Traffic density follows heat: the game feeds you exactly as hard as you are
 // playing. More cars is more fuel AND more danger, which is what stops a hot
 // streak from being a free ride.

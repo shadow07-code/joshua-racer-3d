@@ -85,12 +85,12 @@ export function makeScenery(scene, road) {
       const yaw = road.headingAt(it.z);
       road.worldPos(it.z, it.side * (TOTAL_HALF + 2.5), v);
       const hidden = thin && (it.slot % 2 === 1);
-      dummy.position.set(v.x, 1.6, v.z);
+      dummy.position.set(v.x, v.y + 1.6, v.z);
       dummy.rotation.set(0, yaw, 0);
       dummy.scale.setScalar(hidden ? 0.0001 : 1);
       dummy.updateMatrix();
       posts.setMatrixAt(i, dummy.matrix);
-      dummy.position.y = 3.4;
+      dummy.position.y = v.y + 3.4;
       dummy.updateMatrix();
       caps.setMatrixAt(i, dummy.matrix);
     }
@@ -101,7 +101,7 @@ export function makeScenery(scene, road) {
     palms.forEach((p, idx) => {
       while (p.z < playerZ - S_BEHIND) p.z += palmSpan;
       road.worldPos(p.z, p.side * (TOTAL_HALF + 15), v);
-      p.g.position.set(v.x, 0, v.z);
+      p.g.position.set(v.x, v.y, v.z);
       p.g.rotation.y = road.headingAt(p.z) + (idx % 3);
       // Palms belong on the coast only — never inside a tunnel or, worse,
       // standing in open water alongside the bridge.
@@ -115,7 +115,7 @@ export function makeScenery(scene, road) {
       while (b.z < playerZ - S_BEHIND) b.z += boardSpan;
       if (!lit || zoneTypeAt(b.z) !== "coast") { b.g.visible = false; continue; }
       road.worldPos(b.z, b.side * (TOTAL_HALF + 52), v);
-      b.g.position.set(v.x, 0, v.z);
+      b.g.position.set(v.x, v.y, v.z);
       // Angled toward the approaching car rather than square to the road, so the
       // sign face is readable well before you draw level with it.
       b.g.rotation.y = road.headingAt(b.z) + b.side * (Math.PI / 2 + 0.6);

@@ -74,7 +74,7 @@ export function makeCopsView(scene, road) {
       const mesh = helis[i], h = sys.helis[i];
       if (!h) { mesh.visible = false; continue; }
       road.worldPos(playerZ + HELI_HOVER_AHEAD, h.x, v);
-      mesh.position.set(v.x, h.alt, v.z);
+      mesh.position.set(v.x, v.y + h.alt, v.z);
       mesh.rotation.y = road.headingAt(playerZ + HELI_HOVER_AHEAD) + Math.PI;   // face the player
       mesh.userData.rotorHub.rotation.y = h.rotorPhase * 24;
       mesh.userData.tailRotor.rotation.x = h.rotorPhase * 30;
@@ -87,7 +87,7 @@ export function makeCopsView(scene, road) {
       if (h.aiming && !h.dropped && ri < reticles.length) {
         road.worldPos(playerZ + HELI_HOVER_AHEAD, h.lockX, v);
         const r = reticles[ri++];
-        r.position.set(v.x, 0.2, v.z);
+        r.position.set(v.x, v.y + 0.2, v.z);
         r.material.emissiveIntensity = (Math.floor(h.beaconPhase * 6) % 2 === 0) ? 3.2 : 0.6;
         r.visible = true;
       }
@@ -98,7 +98,7 @@ export function makeCopsView(scene, road) {
       const mesh = barrels[i], b = sys.barrels[i];
       if (!b) { mesh.visible = false; continue; }
       road.worldPos(b.z, b.x, v);
-      mesh.position.set(v.x, 0, v.z);
+      mesh.position.set(v.x, v.y, v.z);
       const fl = 1 + Math.sin(b.flame * 18) * 0.18 + Math.sin(b.flame * 7) * 0.1;
       mesh.userData.flame.scale.set(fl, fl, fl);
       mesh.visible = true;

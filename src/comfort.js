@@ -16,6 +16,7 @@ const SPECTACLE = {
   lookDampK: CAMERA.lookDampK, // 6.0
   vignetteMax: 0.3,           // peak edge-darkening opacity at top speed
   speedLines: true,
+  roll: CAMERA.roll,          // camera banks a few degrees with the slide
 };
 
 const COMFORT = {
@@ -26,6 +27,7 @@ const COMFORT = {
   lookDampK: 3.5,
   vignetteMax: 0.5,           // stronger tunnel
   speedLines: false,
+  roll: 0,                    // horizon welded level — the whole point of the mode
 };
 
 export function isComfort() { return state.enabled; }

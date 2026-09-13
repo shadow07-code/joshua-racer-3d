@@ -63,7 +63,7 @@ export function makeRampsView(scene, road) {
       for (let k = 0; k < 4; k++) {
         road.worldPos(z, xs[k], v);
         const o = (r * 4 + k) * 3;
-        pos[o] = v.x; pos[o + 1] = ys[k]; pos[o + 2] = v.z;
+        pos[o] = v.x; pos[o + 1] = ys[k] + v.y; pos[o + 2] = v.z;
       }
     }
     mesh.geometry.attributes.position.needsUpdate = true;

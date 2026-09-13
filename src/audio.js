@@ -327,6 +327,62 @@ export function stopSkid() {
   skidSrc = skidGain = skidFilt = null;
 }
 
+// ── PASS-BY ── The shave is the most frequent and most important thing that
+// happens in this game, and until now it was SILENT at racing speed: the only
+// sfxNearMiss() call sat behind a >=100 km/h gate that the 0.60 heat speed floor
+// (= 120 km/h) meant could never be the losing branch. The single best moment in
+// the loop made no sound at all.
+//
+// A real pass-by is a band of noise that sweeps DOWN in pitch as the car goes by
+// — that Doppler drop is the whole reason a near miss feels near. `tight` (0..1)
+// opens it up: a pixel-close shave is louder, brighter and drops further.
+export function sfxWhoosh(tight = 0) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const k = Math.max(0, Math.min(1, tight));
+  const src = ctx.createBufferSource(); src.buffer = getNoiseBuf();
+  const f = ctx.createBiquadFilter(); f.type = "bandpass";
+  f.Q.value = 1.5 + 2.2 * k;
+  f.frequency.setValueAtTime(1250 + 900 * k, t);
+  f.frequency.exponentialRampToValueAtTime(240, t + 0.20 + 0.08 * k);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.05 + 0.16 * k, t + 0.035);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26 + 0.1 * k);
+  src.connect(f); f.connect(g); g.connect(sfxGain);
+  src.start(t); src.stop(t + 0.42);
+}
+
+// ── WIND + ROAD ROAR ── A continuous filtered-noise bed that opens with speed.
+// The engine alone is a tone, and a tone does not convey velocity: what actually
+// tells your ear you are doing 200 is the broadband rush around it. This is the
+// cheapest possible "expensive game" lever in the whole project.
+let windSrc = null, windGain = null, windFilt = null;
+export function startWind() {
+  if (!ctx || windSrc) return;
+  windSrc = ctx.createBufferSource(); windSrc.buffer = getNoiseBuf(); windSrc.loop = true;
+  windFilt = ctx.createBiquadFilter(); windFilt.type = "lowpass";
+  windFilt.frequency.value = 400; windFilt.Q.value = 0.6;
+  windGain = ctx.createGain(); windGain.gain.value = 0;
+  windSrc.connect(windFilt); windFilt.connect(windGain); windGain.connect(sfxGain);
+  windSrc.start();
+}
+// speed01 is 0..1+ of rated top speed; `nos` lifts the whole bed so nitrous
+// arrives as air as well as a roar.
+export function setWind(speed01, nos = 0) {
+  if (!windGain || !ctx) return;
+  const t = ctx.currentTime;
+  const v = Math.max(0, Math.min(1.3, speed01));
+  windGain.gain.setTargetAtTime(0.010 + 0.055 * v * v + 0.030 * nos, t, 0.12);
+  windFilt.frequency.setTargetAtTime(320 + 2200 * v + 900 * nos, t, 0.15);
+}
+export function stopWind() {
+  if (!windSrc) return;
+  try { windSrc.stop(); } catch {}
+  windSrc.disconnect(); windGain.disconnect(); windFilt.disconnect();
+  windSrc = windGain = windFilt = null;
+}
+
 // ── NITROUS ── a held roar: the crack of the bottle, then a resonant blast whose
 // brightness tracks how far the spool has wound in.
 let nosSrc = null, nosGain = null, nosFilt = null;

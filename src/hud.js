@@ -21,14 +21,14 @@ export function makeHud(onPlayAgain) {
   const tachEl = el("tach"), tachFill = el("tach-fill"), gearEl = el("gear");
   const comboEl = el("combo"), comboN = el("combo-n"), comboBar = el("combo-bar");
   const nearmissEl = el("nearmiss"), crashEl = el("crash-flash");
-  const driftEl = el("drift"), driftT = el("drift-t"), nosBtn = el("btn-nos");
+  const driftEl = el("drift"), driftT = el("drift-t"), nosBtn = el("btn-nos"), brakeBtn = el("btn-brake");
   const tipEl = el("tip"), tipText = el("tip-text");
   const rampMsgEl = el("rampage-msg"), rampTintEl = el("rampage-tint");
   const goPanel = el("gameover"), goScore = el("go-score"), goBest = el("go-best"),
     goNew = el("go-new"), goPassed = el("go-passed"), goTime = el("go-time"),
     goTop = el("go-top"), goBtn = el("go-again"), goCoins = el("go-coins"),
     goNitro = el("go-nitro"), goAir = el("go-air"), goChain = el("go-chain"),
-    goNos = el("go-nos"), goDrift = el("go-drift"),
+    goNos = el("go-nos"), goDrift = el("go-drift"), goSlings = el("go-slings"),
     goDist = el("go-dist"), goSector = el("go-sector"), goSectorIdx = el("go-sector-idx"),
     goRankName = el("go-rank-name"), goRankNext = el("go-rank-next"), goRankBar = el("go-rank-bar"),
     goGradeLetter = el("go-grade-letter"), goGradeQual = el("go-grade-qual"),
@@ -112,6 +112,9 @@ export function makeHud(onPlayAgain) {
       if (on && driftT) driftT.textContent = (s.driftT || 0).toFixed(1) + "s";
     }
     if (nosBtn) nosBtn.classList.toggle("dry", (s.heat || 0) <= 0.05);
+    // The brake pad lights while held, so a player using a thumb they cannot
+    // see still gets confirmation the pedal took.
+    if (brakeBtn) brakeBtn.classList.toggle("on", (s.braking || 0) > 0.15);
     if (secName) secName.textContent = s.sectorName || "";
     if (secDist) secDist.textContent = Math.floor(s.dist || 0).toLocaleString() + " m";
     if (secBar) secBar.style.width = (Math.max(0, Math.min(1, s.sectorProgress || 0)) * 100).toFixed(1) + "%";
@@ -162,6 +165,7 @@ export function makeHud(onPlayAgain) {
     if (goDist) goDist.textContent = Math.floor(g.dist || 0).toLocaleString() + " m";
     if (goNos) goNos.textContent = (g.nosTime || 0).toFixed(1) + "S";
     if (goDrift) goDrift.textContent = (g.bestDrift || 0).toFixed(1) + "S";
+    if (goSlings) goSlings.textContent = g.slingshots || 0;
     // The sector is the headline — the one line of a run worth repeating.
     if (goSector) goSector.textContent = g.sectorName || "COAST RUN";
     if (goSectorIdx) goSectorIdx.textContent = "SECTOR " + (g.sector || 1);

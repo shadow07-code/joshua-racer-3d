@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const imp = (p) => import(pathToFileURL(join(SRC, p)).href);
 
-const { PHYS, HEAT, ONCOMING, SCORE, CHAIN } = await imp("config.js");
+const { PHYS, HEAT, ONCOMING, SCORE, CHAIN, BRAKE, SLINGSHOT } = await imp("config.js");
 const ST = await imp("stages.js");
 const RK = await imp("rank.js");
 const H = await imp("heat.js");
@@ -19,6 +19,28 @@ const T = await imp("entities/traffic.js");
 
 const DT = 1 / 60;
 const line = (s) => console.log(s);
+
+// ── SEEDED RNG ───────────────────────────────────────────────────────────────
+// The traffic sim calls Math.random() dozens of times a second, so an unseeded
+// harness produces a DIFFERENT world every run — and the integration bots swung
+// from "died at 48s with 3.5k" to "survived 120s with 65k" on identical code.
+// That made the one instrument this project uses to decide whether the game is
+// balanced completely unusable for comparing a change against the code it
+// replaced. Seed it, run every bot over the same set of worlds, and report the
+// median so one lucky spawn cannot carry a verdict.
+const _realRandom = Math.random;
+function seedRandom(seed) {
+  let a = seed >>> 0;
+  Math.random = function mulberry32() {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function unseedRandom() { Math.random = _realRandom; }
+const SEEDS = [1, 2, 3, 4, 5, 6, 7];
+const median = (xs) => { const a = [...xs].sort((x, y) => x - y); return a[(a.length - 1) >> 1]; };
 
 // ── A. The decay curve — how long does coasting buy you? ─────────────────────
 line("\nA. DOING NOTHING");
@@ -48,11 +70,19 @@ line("\nB. EQUILIBRIUM — near-misses needed to HOLD a level");
     line(`   a mid-tightness shave every ${period.toFixed(1)}s → settles at ${(h.v * 100).toFixed(0)}% ` +
          (h.dead ? "(DIED)" : ""));
   }
+  // Before the brake existed this was an upper bound nobody could reach. Now a
+  // player CAN match pace and sit there, so the decay is the only thing standing
+  // between the design and "park behind a bus and win" — test it directly.
   const h = H.makeHeat(); h.v = 0.5;
-  let t = 0;
-  while (t < 60) { H.addHeat(h, HEAT.draftRate * 0.7 * DT); H.updateHeat(h, DT, {}); t += DT; }
-  line(`   drafting non-stop at 70% closeness (an UPPER BOUND — you cannot hold a
-   slipstream, you always close on the bumper) → settles at ${(h.v * 100).toFixed(0)}% (a HOLD, not a climb — by design)`);
+  let t = 0, held = 0;
+  while (t < 60) {
+    held += DT;
+    H.addHeat(h, HEAT.draftRate * 0.7 * H.draftFalloff(held) * DT);
+    H.updateHeat(h, DT, {});
+    t += DT;
+  }
+  line(`   PARKED in a tow at 70% closeness for 60s → ${(h.v * 100).toFixed(0)}% ` +
+       (h.v < 0.5 ? "(LOSES ground — parking is not a strategy ✔)" : "(!! a heat fountain — the falloff is too weak)"));
 }
 
 // ── C. Crash survivability: is aggression really the safe play? ──────────────
@@ -97,10 +127,14 @@ function runBot(policy, seconds) {
   let chain = 0, chainTimer = 0, chainBest = 0, draftStreak = 0, sectorBest = 1;
   const chainMul = () => 1 + Math.min(chain, CHAIN.cap) * CHAIN.step;
   const link = () => { chain++; chainBest = Math.max(chainBest, chain); chainTimer = CHAIN.window; };
+  let brakeTime = 0, slings = 0, draftCar = null, draftHeldFor = 0, draftSince = 1e9;
   while (t < seconds && !h.dead) {
-    const steer = policy(sys, p, h);
+    const act = policy(sys, p, h);
+    const steer = typeof act === "number" ? act : (act.steer || 0);
+    const brake = typeof act === "number" ? false : !!act.brake;
+    if (brake) brakeTime += DT;
     p.throttle01 = H.heatSpeed01(h);
-    updatePlayer(p, DT, { steer }, {});
+    updatePlayer(p, DT, { steer, brake }, {});
     const sector = ST.sectorAt(ST.sectorIndexAt(p.z));
     sectorBest = Math.max(sectorBest, sector.index);
     sys.densityMul = H.heatDensity(h) * sector.density;
@@ -109,13 +143,24 @@ function runBot(policy, seconds) {
       onPassed: () => {},
       onNearMiss: (tight, c) => {
         nearMisses++;
-        H.addHeat(h, (HEAT.nearMiss + HEAT.nearMissTight * tight) * (c && c.oncoming ? HEAT.oncomingMul : 1) * chainMul());
+        const headOn = !!(c && c.oncoming);
+        const slung = !headOn && c && c === draftCar
+          && draftHeldFor >= SLINGSHOT.minDraft && draftSince <= SLINGSHOT.window;
+        if (slung) { slings++; draftCar = null; }
+        H.addHeat(h, (HEAT.nearMiss + HEAT.nearMissTight * tight)
+          * (headOn ? HEAT.oncomingMul : 1) * (slung ? SLINGSHOT.heatMul : 1) * chainMul());
         link();
       },
     });
+    draftSince += DT;
     const d = T.draftTarget(sys, p.x, p.z, p.y);
-    if (d) { draftTime += DT; draftStreak += DT; H.addHeat(h, HEAT.draftRate * d.closeness * DT); }
-    else if (draftStreak > 0) { if (draftStreak > CHAIN.draftMin) link(); draftStreak = 0; }
+    if (d) {
+      draftTime += DT; draftStreak += DT; draftCar = d.car;
+      H.addHeat(h, HEAT.draftRate * d.closeness * H.draftFalloff(draftStreak) * DT);
+    } else if (draftStreak > 0) {
+      if (draftStreak > CHAIN.draftMin) link();
+      draftHeldFor = draftStreak; draftSince = 0; draftStreak = 0;
+    }
     if (chainTimer > 0) { chainTimer -= DT; if (chainTimer <= 0) chain = 0; }
     if (!h.overdrive && p.invuln <= 0) {
       const hit = T.checkTrafficHit(sys, playerBox(p), p.y);
@@ -135,7 +180,8 @@ function runBot(policy, seconds) {
     lastZ = p.z;
     t += DT;
   }
-  return { t, h, score, crashes, nearMisses, draftTime, maxHeat, chainBest, sectorBest, dist: p.z };
+  return { t, h, score, crashes, nearMisses, draftTime, maxHeat, chainBest, sectorBest,
+           dist: p.z, brakeTime, slings };
 }
 
 // The coward: holds the middle lane, never goes near anything.
@@ -155,19 +201,49 @@ function racer(sys, p) {
   return dx >= 0 ? -1 : 1;                                       // swerve out late
 }
 
-for (const [name, pol] of [["COWARD (never risks)", coward], ["RACER (plays the line)", racer]]) {
-  const r = runBot(pol, 120);
-  const verdict = r.h.dead ? `DIED at ${r.t.toFixed(0)}s` : `alive at 120s`;
-  line(`   ${name.padEnd(24)} ${verdict.padEnd(18)} peak heat ${(r.maxHeat * 100).toFixed(0)}%  ` +
-       `shaves ${r.nearMisses}  draft ${r.draftTime.toFixed(0)}s  crashes ${r.crashes}  score ${Math.round(r.score).toLocaleString()}`);
-  line(`   ${"".padEnd(24)} reached SECTOR ${r.sectorBest} (${ST.sectorAt(r.sectorBest).name}), ` +
-       `best chain ${r.chainBest}, ${Math.round(r.dist).toLocaleString()} m`);
+// The PARASITE: finds one car, brakes to its pace and never leaves. If the
+// economy is sound this must lose to the racer AND eventually die.
+function parasite(sys, p) {
+  let target = null, bestDz = Infinity;
+  for (const c of sys.list) {
+    if (c.smashed || c.oncoming) continue;
+    const dz = c.z - p.z;
+    if (dz > 14 && dz < 120 && dz < bestDz) { bestDz = dz; target = c; }
+  }
+  if (!target) return { steer: 0, brake: false };
+  const dx = target.x - p.x;
+  return { steer: Math.abs(dx) < 1.5 ? 0 : Math.sign(dx), brake: (target.z - p.z) < 40 };
+}
+
+line(`   (median of ${SEEDS.length} seeded worlds — same worlds for every bot)`);
+line("   NOTE: these measure the ECONOMY, not technique — a 20-line stateless policy");
+line("   cannot execute a three-phase slingshot, so that is measured in section O.");
+const BOTS = [
+  ["COWARD (never risks)", coward],
+  ["RACER (no brake)", racer],
+  ["PARASITE (parks in a tow)", parasite],
+];
+for (const [name, pol] of BOTS) {
+  const runs = SEEDS.map((sd) => { seedRandom(sd); const r = runBot(pol, 120); unseedRandom(); return r; });
+  const died = runs.filter((r) => r.h.dead).length;
+  const mScore = median(runs.map((r) => r.score));
+  const mLife = median(runs.map((r) => r.t));
+  const verdict = died === runs.length ? `died, median ${mLife.toFixed(0)}s`
+    : died === 0 ? `survived 120s` : `died in ${died}/${runs.length}`;
+  line(`   ${name.padEnd(25)} ${verdict.padEnd(20)} score ${Math.round(mScore).toLocaleString().padStart(7)}  ` +
+       `shaves ${median(runs.map((r) => r.nearMisses))}  draft ${median(runs.map((r) => r.draftTime)).toFixed(0)}s  ` +
+       `crashes ${median(runs.map((r) => r.crashes))}  peak ${(median(runs.map((r) => r.maxHeat)) * 100).toFixed(0)}%`);
+  line(`   ${"".padEnd(25)} sector ${median(runs.map((r) => r.sectorBest))}, chain ${median(runs.map((r) => r.chainBest))}, ` +
+       `${Math.round(median(runs.map((r) => r.dist))).toLocaleString()} m, brake ${median(runs.map((r) => r.brakeTime)).toFixed(0)}s, ` +
+       `slingshots ${median(runs.map((r) => r.slings))}`);
 }
 
 // ── F. Score calibration for the letter grades ───────────────────────────────
 line("\nF. SCORE RATES (for GRADES thresholds)");
 {
+  seedRandom(11);
   const r = runBot(racer, 90);
+  unseedRandom();
   line(`   a competent 90s run scores about ${Math.round(r.score).toLocaleString()}`);
   const rate = r.score / Math.max(1, r.t);
   line(`   ≈ ${Math.round(rate).toLocaleString()}/s — so 60s≈${Math.round(rate * 60).toLocaleString()}, ` +
@@ -287,4 +363,165 @@ line("K. FLAMEOUT");
   line(`   nothing at all              → dead at ${bt.toFixed(1)}s`);
   line(`   one real shave at t=2s      → ${h.dead ? "dead at " + t.toFixed(1) + "s" : "escaped to " + (h.v * 100).toFixed(0) + "%"}` +
        `  (bought ${(t - bt).toFixed(1)}s)`);
+}
+
+// ── L. THE BRAKE: does the new pedal do what it claims? ──────────────────────
+line("\nL. BRAKE");
+{
+  const p = makePlayer();
+  p.throttle01 = 1;
+  let t = 0;
+  while (t < 3 && p.speed < PHYS.maxSpeed * 0.99) { updatePlayer(p, DT, { steer: 0 }, {}); t += DT; }
+  const top = p.speed;
+  let stopT = 0;
+  while (stopT < 5 && p.speed > PHYS.maxSpeed * BRAKE.floor01 + 0.5) {
+    updatePlayer(p, DT, { steer: 0, brake: true }, {});
+    stopT += DT;
+  }
+  line(`   ${(top / PHYS.maxSpeed * PHYS.topSpeedKmh).toFixed(0)} km/h → ` +
+       `${(p.speed / PHYS.maxSpeed * PHYS.topSpeedKmh).toFixed(0)} km/h in ${stopT.toFixed(2)}s`);
+
+  // The floor has to be UNDER the quickest civilian car, or a tow can never be
+  // matched and the brake buys nothing the design cares about.
+  const fastest = Math.max(...T.TRAFFIC_TYPES.map((k) => k.speedMul)) * PHYS.cruiseSpeed;
+  const slowest = Math.min(...T.TRAFFIC_TYPES.map((k) => k.speedMul)) * PHYS.cruiseSpeed;
+  const floor = PHYS.maxSpeed * BRAKE.floor01;
+  line(`   brake floor ${floor.toFixed(0)} u/s vs traffic ${slowest.toFixed(0)}-${fastest.toFixed(0)} u/s ` +
+       (floor < fastest ? "→ every car in the game is matchable ✔" : "→ !! cannot match the fast lane"));
+  line(`   cold speed floor is ${(HEAT.speedFloor * PHYS.maxSpeed).toFixed(0)} u/s, so OFF the brake you always overtake ` +
+       (HEAT.speedFloor * PHYS.maxSpeed > fastest ? "✔" : "!!"));
+
+  // Weight transfer: braking must genuinely sharpen the car, or it is just a pause.
+  const lat = (brake) => {
+    const q = makePlayer(); q.throttle01 = 1;
+    for (let i = 0; i < 90; i++) updatePlayer(q, DT, { steer: 0 }, {});
+    let peak = 0;
+    for (let i = 0; i < 45; i++) { updatePlayer(q, DT, { steer: 1, brake }, {}); peak = Math.max(peak, Math.abs(q.vx)); }
+    return peak;
+  };
+  const free = lat(false), stood = lat(true);
+  line(`   peak lateral over 0.75s of full lock: ${free.toFixed(0)} u/s free, ${stood.toFixed(0)} u/s on the brake ` +
+       `(${((stood / free - 1) * 100).toFixed(0)}% sharper)`);
+}
+
+// ── M. THE TOW: the decay curve, in seconds a player can read ────────────────
+line("\nM. SLIPSTREAM DECAY");
+{
+  for (const held of [0, 0.5, 1.0, 2.0, 3.0, 5.0]) {
+    const f = H.draftFalloff(held);
+    const rate = HEAT.draftRate * 0.8 * f;
+    const drainAt = (v) => HEAT.drainBase + HEAT.drainScale * v;
+    line(`   held ${held.toFixed(1)}s → ${(f * 100).toFixed(0)}% value, ` +
+         `${(rate * 100).toFixed(1)}%/s in vs ${(drainAt(0.6) * 100).toFixed(1)}%/s out at 60% heat ` +
+         (rate > drainAt(0.6) ? "(gaining)" : "(losing)"));
+  }
+}
+
+// ── N. ELEVATION: the road climbs now, so it had better not sink ─────────────
+line("\nN. ROAD ELEVATION");
+{
+  const R = await imp("curve.js");
+  let lo = Infinity, hi = -Infinity, maxGrade = 0, bad = 0;
+  for (let z = 0; z < 60000; z += 3) {
+    const y = R.elevAt(z), g = R.gradeAt(z);
+    if (!Number.isFinite(y) || !Number.isFinite(g)) bad++;
+    lo = Math.min(lo, y); hi = Math.max(hi, y);
+    maxGrade = Math.max(maxGrade, Math.abs(g));
+  }
+  line(`   height ${lo.toFixed(2)} .. ${hi.toFixed(2)} over 60 km ` +
+       (lo >= -0.001 ? "(never below y=0, so never under the sea ✔)" : "(!! DIPS BELOW THE SEA)"));
+  line(`   steepest grade ${(maxGrade * 100).toFixed(1)}% — over the 320-unit view that is ` +
+       `${(maxGrade * 320).toFixed(0)} units of rise/fall`);
+  line(`   non-finite samples: ${bad} ${bad === 0 ? "✔" : "!!"}`);
+}
+
+// ── O. THE SLINGSHOT, EXECUTED ───────────────────────────────────────────────
+// The bots are crude, so "how often does a bot land one" says more about the bot
+// than the mechanic. This is the mechanic itself, driven by hand: close on one
+// car, brake to hold station in its tow, then break out just far enough to
+// squeeze past. If a player who does exactly the right thing cannot make this
+// register, the move does not exist however good the numbers look.
+line("\nO. SLINGSHOT — a scripted, perfect execution");
+{
+  const sys = T.makeTrafficSystem();
+  sys.nextRowZ = 1e9;                       // no spawning; one hand-placed car
+  const skin = T.TRAFFIC_TYPES[0];
+  const car = {
+    skin, z: 120, x: 0, laneIdx: 2, speed: PHYS.cruiseSpeed * skin.speedMul,
+    cruise: PHYS.cruiseSpeed * skin.speedMul, passed: false, nearMissed: false,
+    smashed: false, driftVx: 0, pendingDriftVx: 0, signalT: 0, sigPhase: 0,
+  };
+  sys.list.push(car);
+
+  const p = makePlayer();
+  const h = H.makeHeat(); h.v = 0.5;
+  const before = h.v;
+  let t = 0, draftStreak = 0, draftHeldFor = 0, draftSince = 1e9, draftCar = null;
+  let heldPeak = 0, fired = null, phase = "close";
+
+  while (t < 14 && !fired) {
+    const dz = car.z - p.z, dx = car.x - p.x;
+    let steer = 0, brake = false;
+    if (phase === "close") {
+      if (dz < 22) phase = "tow";
+      steer = Math.abs(dx) < 1 ? 0 : Math.sign(dx);
+    }
+    if (phase === "tow") {
+      brake = dz < 20;                       // hold station in the wake
+      steer = Math.abs(dx) < 1 ? 0 : Math.sign(dx);
+      if (draftStreak > 1.2) phase = "break";
+    }
+    // Hold the line rather than steering until it is reached: full lock carries
+    // ~9 extra units after release, which overshoots the near-miss band.
+    if (phase === "break") {
+      const want = car.x - 13;
+      steer = Math.abs(want - p.x) < 1.5 ? 0 : Math.sign(want - p.x);
+    }
+
+    p.throttle01 = H.heatSpeed01(h);
+    updatePlayer(p, DT, { steer, brake }, {});
+    draftSince += DT;
+    T.updateTraffic(sys, DT, p.z, {
+      playerX: p.x, playerY: p.y, onPassed: () => {},
+      onNearMiss: (tight, c) => {
+        const slung = c === draftCar && draftHeldFor >= SLINGSHOT.minDraft && draftSince <= SLINGSHOT.window;
+        H.addHeat(h, (HEAT.nearMiss + HEAT.nearMissTight * tight) * (slung ? SLINGSHOT.heatMul : 1));
+        fired = { slung, tight, gap: draftSince };
+      },
+    });
+    const d = T.draftTarget(sys, p.x, p.z, p.y);
+    if (d) {
+      draftStreak += DT; draftCar = d.car; heldPeak = Math.max(heldPeak, draftStreak);
+      H.addHeat(h, HEAT.draftRate * d.closeness * H.draftFalloff(draftStreak) * DT);
+    } else if (draftStreak > 0) {
+      draftHeldFor = draftStreak; draftSince = 0; draftStreak = 0;
+    }
+    H.updateHeat(h, DT, {});
+    t += DT;
+  }
+
+  line(`   tow held ${heldPeak.toFixed(2)}s, broke out, ` +
+       (fired
+         ? `shave ${fired.slung ? "REGISTERED AS A SLINGSHOT ✔" : "landed but NOT counted !!"} ` +
+           `(tightness ${fired.tight.toFixed(2)}, ${fired.gap.toFixed(2)}s after leaving the tow)`
+         : "never got past the car !!"));
+  line(`   heat ${(before * 100).toFixed(0)}% → ${(h.v * 100).toFixed(0)}% over ${t.toFixed(1)}s ` +
+       `(net ${((h.v - before) * 100 >= 0 ? "+" : "")}${((h.v - before) * 100).toFixed(0)} points of bar) ` +
+       (h.v > before ? "✔ the move pays" : "!! the move loses"));
+
+  // What the technique is actually WORTH, next to just blasting past the same
+  // car. This is the number that decides whether the brake is a skill or a trap.
+  const tight = fired ? fired.tight : 0.6;
+  const plainHeat = HEAT.nearMiss + HEAT.nearMissTight * tight;
+  const slungHeat = plainHeat * SLINGSHOT.heatMul;
+  const towHeat = 0.42 * (() => {             // ~1.35s of tow at ~75% closeness
+    let acc = 0;
+    for (let k = 0; k < Math.round(1.35 / DT); k++) acc += 0.75 * H.draftFalloff(k * DT) * DT;
+    return acc;
+  })();
+  const plainScore = SCORE.nearMissBonus * (1 + SCORE.precisionMax * tight);
+  const slungScore = plainScore * SLINGSHOT.scoreMul;
+  line(`   plain shave: +${(plainHeat * 100).toFixed(1)} bar, ${Math.round(plainScore)} pts`);
+  line(`   tow + slingshot: +${((towHeat + slungHeat) * 100).toFixed(1)} bar, ${Math.round(slungScore)} pts ` +
+       `→ ${((towHeat + slungHeat) / plainHeat).toFixed(1)}x the fuel, ${(slungScore / plainScore).toFixed(1)}x the points`);
 }

@@ -84,6 +84,45 @@ Aimed squarely at NFS Underground. Two verbs, one structural idea:
   sustain one. Traffic stays the only real fuel.
 - **DASH moved to a double-tap of a steer pad**, freeing the centre for NOS.
 
+### Then: the FEEL pass — the BRAKE, the SLINGSHOT, and a road with hills
+
+The game had been through four redesigns without ever acquiring the most basic
+verb in racing. Speed was a pure readout of HEAT: you could ask for more of it
+and never for less, which is why the slipstream — the mechanic the whole economy
+is built on — could not be *held*. The car outran every civilian on the road by
+construction, so a tow lasted about a second and a half however well you drove
+it, and the code had written that limitation up as a design feature.
+
+- **BRAKE** (`BRAKE` in config, `btn-brake` stacked above the NOS pad, Down/S on
+  the keyboard). Pulls the speed target down to `floor01` (0.30 of top = 32 u/s,
+  deliberately under the *quickest* civilian car at 35 u/s so **every** car on
+  the road is matchable). Weight transfers onto the nose, so the front bites:
+  `steerBonus` + `gripBonus` make the car 35% sharper on the brake, measured in
+  harness section L. It is not a safety valve — heat drains on a clock whatever
+  your speed, and score is distance × heat, so every second on the pedal is
+  points you did not bank and fuel you did not replace.
+- **THE TOW NOW RUNS OUT** (`HEAT.draftFade` / `draftFadeFloor`). The instant a
+  player can match pace and sit there, an undecayed draft is a heat fountain:
+  park behind a bus, never take another risk, win. The value of a tow decays with
+  how long it has been held, bottoming out **below** the idle drain rate — so
+  holding is still correct and parking is always fatal. The PARASITE bot (section
+  E) exists purely to prove that, and it dies in 6 of 7 seeded worlds.
+- **SLINGSHOT** (`SLINGSHOT` in config). Ride a car's wake, break out, and shave
+  it on the way past: that pair was always two adjacent systems that happened to
+  reward each other, and naming it turns a habit into a technique. Worth **3.8×
+  the heat and 2.2× the score** of a plain shave (harness section O).
+- **Every shave is audible.** It never was. The only `sfxNearMiss()` call sat
+  behind a `>= 100 km/h` gate that the 0.60 speed floor (= 120 km/h) made
+  unreachable, so the most frequent and best moment in the loop happened in
+  total silence. `sfxWhoosh(tightness)` is a band of noise sweeping *down* in
+  pitch — that Doppler drop is most of why a near miss feels near.
+- **ROAD ELEVATION** (`CURVE.elev*`, `src/curve.js`). Crests and dips. See the
+  trap in §6: wavelength matters far more than amplitude here.
+- Plus: a **camera that rolls** a few degrees with the slide (Comfort Mode zeroes
+  it), **particles** (tyre smoke, barrier sparks, impact debris —
+  `render3d/particles.js`), **brake lights** that blaze at the chase camera, a
+  **wind/road-roar bed** that opens with speed, and **haptics**.
+
 ---
 
 ## 1. Open items (start here)
@@ -124,7 +163,16 @@ Aimed squarely at NFS Underground. Two verbs, one structural idea:
 5. **Not started, in rough priority order:**
    - **A balance pass once the owner has actually played it.** The new systems were tuned against
      headless numbers (encounter rates, air time, spawn cadence), not feel. The likely dials are
-     `ONCOMING.startSeconds`/`gap`, `NITRO.chance` and `JUMP.chance` — all in `config.js`.
+     `ONCOMING.gap`, `NITRO.chance` and `JUMP.chance` — all in `config.js`.
+   - **`GRADES` may now be miscalibrated.** They were set from a single *unseeded* harness run that
+     happened to score 65k; the harness is seeded now and a competent bot medians ~8.7k over two
+     minutes. That bot crashes 42 times in that window, so it is a floor, not a ceiling — but
+     nobody has measured what a human who actually slingshots scores. Do not touch `GRADES` until
+     someone has.
+   - **An expert BOT.** Section E's policies are stateless one-liners and cannot execute the
+     three-phase slingshot, so the harness measures the *economy* (safe dies, parking is worthless)
+     and section O measures the *mechanic* in isolation. A stateful bot that strings slingshots
+     together would let the two be compared directly, which is the one balance question still open.
    - **The sea barely reads as water.** At dusk it fogs to almost exactly the sky colour, so the
      causeway and the bridge both look like they cross a void. A slow scrolling normal map (or even
      a horizon-line contrast tweak) would sell "over water" for very little work.
@@ -327,6 +375,23 @@ Everything numeric lives in **`src/config.js`**.
 
 ---
 
+### Feel dials added by the FEEL pass
+
+| Want to change | Knob | Now |
+|---|---|---|
+| How hard the brake bites | `BRAKE.power` | 52 (vs `PHYS.drag` 5) |
+| How slow the brake will take you | `BRAKE.floor01` | 0.30 — **must stay under the fastest traffic** (0.35 of cruise) |
+| Brake-to-turn sharpness | `BRAKE.steerBonus` / `gripBonus` | 0.30 / 0.55 → 35% more lateral |
+| How fast a tow loses value | `HEAT.draftFade` / `draftFadeFloor` | 1.6s e-fold, floors at 0.12 — **the floor must stay below `HEAT.drainBase` (0.045) or parking becomes viable** |
+| Slingshot payout | `SLINGSHOT.heatMul` / `scoreMul` | 1.8 / 2.2 |
+| How long after leaving a tow a shave still counts | `SLINGSHOT.window` | 1.6s — breaking out and getting past genuinely takes ~1.2s |
+| Hill size | `CURVE.elevAmp1/2` | 9 / 6 → road spans y 0–30 |
+| Hill length | `CURVE.elevFreq1/2` | ~1100 / ~2600-unit wavelengths |
+| Camera roll | `CAMERA.roll` | 0.055 rad (~3°); Comfort Mode sets 0 |
+| Smoke/spark density | `render3d/particles.js` emitter rates | smoke `16 + 40×intensity`/s, sparks 90/s |
+
+---
+
 ## 6. How to run & verify
 
 **No build.** Serve the folder statically:
@@ -379,6 +444,45 @@ opposing lane; pickup/ramp spawn rates; that airborne disables traffic hits, coi
 that a ramp triggers exactly once and only in its own lane.
 
 ### Traps (hard-won — read before debugging)
+
+- **The harness was UNSEEDED until the FEEL pass, and its verdicts were noise.**
+  The traffic sim calls `Math.random()` dozens of times a second, so identical
+  code produced "died at 48s with 3.5k" and "survived 120s with 65k" on different
+  runs. Any balance claim made before that is worth exactly nothing. It now seeds
+  `Math.random` per run and reports the **median of 7 fixed worlds**, and every
+  bot drives the same seven. If you add a bot, run it through `SEEDS` too.
+- **Road elevation: WAVELENGTH matters more than AMPLITUDE.** The first pass used
+  ~700-unit hills, which sounds generous until you remember the view is only 320
+  units deep — a whole crest fitted inside the frame, climb cancelled descent, and
+  the net change across the visible road was **4 units**. It read as dead flat.
+  At ~1100 units you spend seconds climbing toward a horizon you cannot see past.
+  Measure with harness section N, not with your eyes.
+- **A near miss needs the pass to be inside 18 units, and a lane is 22.4 wide.**
+  So a clean one-lane-over pass scores *nothing* — you have to squeeze. This is
+  deliberate (it is what makes a shave a skill) but it bites when writing bots:
+  steering "until you reach the offset" overshoots, because releasing full lock at
+  ~90 u/s of lateral velocity carries another ~9 units before grip bleeds it off.
+  Hold the line instead of aiming at it.
+- **Anything drawn on the road must add `v.y` now.** `road.worldPos()` returns a
+  real height. Everything that used to write a literal `0` (or an absolute height
+  like the bridge cables) has been converted, but new geometry will float or sink
+  if it forgets. Anything longer than a few units also needs pitching by
+  `road.gradeAt(z)` — over a bus's 22 units a 6% grade is 1.3 units of nose.
+- **`navigator.vibrate` logs a console error on every call before a real user
+  gesture**, so haptics are gated behind the first `pointerdown`/`keydown`
+  (`src/juice.js`). A *synthetic* keydown satisfies the gate but not Chrome, so
+  driving the game from the console will still print those errors — that is the
+  test harness, not a bug.
+- **`gl_PointSize` is in PHYSICAL pixels and scales as `300/distance`.** At the
+  chase camera's ~25 units with DPR 2 that is ~24 screen pixels per unit of
+  `aSize`. The first particle pass shipped smoke at `aSize` 10 — 240px beach
+  balls. Smoke wants to be wide and nearly transparent; sparks small and bright.
+- **The preview pane stops `requestAnimationFrame` entirely while hidden**, so
+  waiting does nothing and each screenshot advances about one frame. To actually
+  drive the game, replace `window.requestAnimationFrame` with a capture-only stub
+  and call the stored callback in a loop — the pattern is in this session's
+  transcript. Note that screenshots can lag the JS state by a frame or two, so
+  read the DOM for truth and use the picture for looks.
 
 - **`localhost:8080` is hijacked.** Another local project ("Just A Scanner") has a service worker and
   sometimes a server on :8080; it will serve *the wrong app* and waste a lot of time. **Use 8099.**

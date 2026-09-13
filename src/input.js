@@ -1,17 +1,24 @@
-// Unified input — keyboard + canvas-touch + on-screen steer buttons.
-// Ported from the 2D game; auto-accelerate, so there is no brake. Binary steer.
+// Unified input — keyboard + canvas-touch + on-screen pads.
+//
+// Three held verbs (steer, NOS, BRAKE) and one edged one (dash). The brake used
+// to not exist at all; it now owns Down/S, and the dash it displaced moved onto
+// Shift plus a double-tap of either steer direction — which is where the touch
+// build always had it, so the two control schemes finally agree.
 import { KEYS } from "./config.js";
 
 const state = {
   steer: 0,
   nos: false,                   // HELD, not edged — nitrous burns while you hold it
+  brake: false,                 // HELD — scrub speed, hold a tow, set up a line
   pressed: new Set(),           // edge-triggered, consumed by the main loop
 };
 
-const DASH_KEYS = ["Shift", "ArrowDown", "s", "S"];
+const DASH_KEYS = ["Shift"];
+const BRAKE_KEYS = ["ArrowDown", "s", "S"];
 const NOS_KEYS = [" ", "ArrowUp", "w", "W"];
 const heldKeys = new Set();
 const btnNos = { held: false };
+const btnBrake = { held: false };
 const touchPoints = new Map();  // identifier -> { x, y, side }
 const btnHeld = { L: false, R: false };
 
@@ -21,6 +28,7 @@ function recompute() {
   if (KEYS.right.some(k => heldKeys.has(k))) s += 1;
   // On-screen buttons take priority — the primary mobile control.
   state.nos = btnNos.held || NOS_KEYS.some((k) => heldKeys.has(k));
+  state.brake = btnBrake.held || BRAKE_KEYS.some((k) => heldKeys.has(k));
   if (btnHeld.L && !btnHeld.R) s = -1;
   else if (btnHeld.R && !btnHeld.L) s = 1;
   else {
@@ -35,12 +43,23 @@ function recompute() {
   state.steer = Math.max(-1, Math.min(1, s));
 }
 
+// A quick double-tap of a steer direction is the dash — on the keyboard as well
+// as the pads, so the gesture the tip teaches is the gesture both schemes use.
+const DOUBLE_TAP_MS = 280;
+const lastKeyTap = { L: -1e9, R: -1e9 };
+
 window.addEventListener("keydown", (e) => {
   if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(e.key)) e.preventDefault();
   if (!heldKeys.has(e.key)) {
     heldKeys.add(e.key);
     state.pressed.add(e.key);
     if (DASH_KEYS.includes(e.key)) state.pressed.add("Dash");
+    const side = KEYS.left.includes(e.key) ? "L" : KEYS.right.includes(e.key) ? "R" : null;
+    if (side) {
+      const now = performance.now();
+      if (now - lastKeyTap[side] < DOUBLE_TAP_MS) { state.pressed.add("Dash" + side); lastKeyTap[side] = -1e9; }
+      else lastKeyTap[side] = now;
+    }
   }
   recompute();
 }, { passive: false });
@@ -101,7 +120,6 @@ function bindSteerButtons() {
   // A quick double-tap on a steer pad is the emergency dash — same thumb, no new
   // button, and it reads as a flick rather than a separate control.
   const lastTap = { L: -1e9, R: -1e9 };
-  const DOUBLE_TAP_MS = 280;
   const press = (side) => {
     const now = performance.now();
     if (now - lastTap[side] < DOUBLE_TAP_MS) { state.pressed.add("Dash" + side); lastTap[side] = -1e9; }
@@ -123,21 +141,25 @@ function bindSteerButtons() {
   wire(btnL, "L");
   wire(btnR, "R");
 
-  // NOS takes the centre pad, and it is HELD rather than tapped — the whole feel
-  // of it is leaning on the button and watching the world stretch.
-  const btnN = document.getElementById("btn-nos");
-  if (btnN) {
-    const down = (e) => { e.preventDefault(); try { btnN.setPointerCapture(e.pointerId); } catch {} btnNos.held = true; state.pressed.add("Touch"); recompute(); };
-    const up = () => { btnNos.held = false; recompute(); };
-    btnN.addEventListener("pointerdown", down);
-    btnN.addEventListener("pointerup", up);
-    btnN.addEventListener("pointercancel", up);
-    btnN.addEventListener("pointerleave", up);
-    btnN.addEventListener("lostpointercapture", up);
-    btnN.addEventListener("contextmenu", (e) => e.preventDefault());
+  // NOS and BRAKE share the centre column — stacked, because they are opposite
+  // ends of the same decision and a thumb should be able to slide between them.
+  // Both are HELD rather than tapped: the feel of each is leaning on the button.
+  const holdPad = (id, flagObj) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const down = (e) => { e.preventDefault(); try { btn.setPointerCapture(e.pointerId); } catch {} flagObj.held = true; state.pressed.add("Touch"); recompute(); };
+    const up = () => { flagObj.held = false; recompute(); };
+    btn.addEventListener("pointerdown", down);
+    btn.addEventListener("pointerup", up);
+    btn.addEventListener("pointercancel", up);
+    btn.addEventListener("pointerleave", up);
+    btn.addEventListener("lostpointercapture", up);
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
-  }
+  };
+  holdPad("btn-nos", btnNos);
+  holdPad("btn-brake", btnBrake);
   // Safety net: if a pad's own pointerup is ever missed (DOM churn / hidden
   // control / lost event), a window-level up or cancel for THAT pointer still
   // releases its side. Per-pointer, so multitouch steering isn't affected.
@@ -162,7 +184,7 @@ export function initInput(canvas) {
 // phantom steer into the new race.
 export function clearSteer() {
   btnHeld.L = false; btnHeld.R = false;
-  btnNos.held = false;
+  btnNos.held = false; btnBrake.held = false;
   touchPoints.clear();
   recompute();
 }

@@ -44,4 +44,25 @@ export function shake(out) {
   return s;
 }
 
+// ── HAPTICS ── This is a landscape-PHONE game first, and on a phone the single
+// most direct channel you have to the player is the one nobody was using. A
+// crash you can feel in your hands lands harder than any amount of screen shake,
+// and it costs one API call. No-op on desktop and on iOS Safari, which does not
+// implement it — so it is a bonus, never load-bearing.
+const canVibrate = typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
+// Chrome refuses (and logs a console error for) every vibrate before the page
+// has had a real gesture, so a run started from a restored session would print
+// one error per crash. Wait for the first touch or key, which on a phone is the
+// tap that starts the game anyway.
+let gestured = false;
+if (canVibrate && typeof window !== "undefined") {
+  const mark = () => { gestured = true; };
+  window.addEventListener("pointerdown", mark, { once: true, passive: true });
+  window.addEventListener("keydown", mark, { once: true });
+}
+export function rumble(ms) {
+  if (!canVibrate || !gestured) return;
+  try { navigator.vibrate(Math.round(isComfort() ? ms * 0.5 : ms)); } catch {}
+}
+
 export function resetJuice() { hitstop = 0; slowmo = 0; slowmoScale = 1; trauma = 0; }
