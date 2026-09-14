@@ -61,9 +61,13 @@ export function makeTrafficSystem(opts = {}) {
     lastRampZ: -1e9,
   };
 }
-// Base spacing between rows. Density divides this, so at full heat rows arrive
-// roughly every 35 units — about a third of a second apart at top speed.
-export const SPAWN_ROW_GAP = 80;
+// BASE SPACING BETWEEN ROWS — the number that decides whether the game can be
+// played at all. Density divides it, so it has to be generous enough that even
+// the tightest sector at full heat leaves time to see a row, pick the gap and
+// get there. At 80 it did not: the worst case was 17 units, which at 108 u/s is
+// a fifth of a second, against a ~0.40s lane change. See tools/densitytest.mjs —
+// that tool exists because this was wrong for months and nothing measured it.
+export const SPAWN_ROW_GAP = 125;
 
 function spawnRow(sys) {
   const r = Math.random();
@@ -94,18 +98,26 @@ function spawnRow(sys) {
     [candidateLanes[i], candidateLanes[j]] = [candidateLanes[j], candidateLanes[i]];
   }
 
-  // HOW MANY CARS PER ROW. This used to be ONE, which left roughly a single car
-  // every 94 units spread over five lanes — you could drive for five seconds
-  // without seeing traffic, and "weave through traffic" needs traffic. The floor
-  // is now two, and density (which follows heat) pushes it towards filling every
-  // lane but the guaranteed gap.
+  // HOW MANY CARS PER ROW. Once it was one, which was too few to weave through.
+  // Then it was "density fills every lane but the guaranteed gap", which was far
+  // too many: with the opposing lane live there are only three usable lanes left,
+  // so a full row left exactly ONE way through, and the gap moves between rows.
+  // Threading a single shifting slot at a fifth of a second per row is not
+  // difficulty, it is a coin flip.
+  //
+  // So: ALWAYS LEAVE A SPARE. Besides the guaranteed gap there is at least one
+  // more open lane, which means a row can be read and driven rather than
+  // memorised — and the guaranteed gap goes back to being the IDEAL line rather
+  // than the only survivable one.
   const dm = sys.densityMul || 1;
   let carsInRow = 1;
   if (!wide) {
-    const extra = Math.max(0, dm - 1) * 2.2;           // ~0 cold, ~2.7 at full heat
+    const extra = Math.max(0, dm - 1) * 1.5;
     carsInRow = 2 + Math.floor(extra) + (Math.random() < (extra % 1) ? 1 : 0);
   }
-  const lanesToFill = candidateLanes.slice(0, Math.min(carsInRow, candidateLanes.length));
+  const spare = candidateLanes.length >= 3 ? 1 : 0;
+  const cap = Math.max(1, candidateLanes.length - spare);
+  const lanesToFill = candidateLanes.slice(0, Math.min(carsInRow, cap));
 
   for (const lane of lanesToFill) {
     const skin = pickSkin();

@@ -18,22 +18,28 @@
 //   oncoming  is the opposing carriageway live
 //   cops      is the police helicopter allowed to sortie
 //   density   multiplier applied ON TOP of the heat-driven density
+// DENSITY IS A GARNISH HERE, NOT THE ESCALATION. It multiplies on top of the
+// heat-driven figure, so the two compound — and a sector table that ran to 1.70
+// meant the late game was tightening the road at the exact moment the player was
+// hottest and therefore already had it tightened. What actually escalates a
+// sector is its RULES: the lights go out, the left lane turns two-way, the
+// helicopter shows up. Those make it harder without making it undriveable.
 const SECTORS = [
   { z: 0,     name: "COAST RUN",  sub: "warm up",              night: 0.00, oncoming: false, cops: false, density: 1.00 },
-  { z: 1200,  name: "RUSH HOUR",  sub: "the road fills up",    night: 0.10, oncoming: false, cops: false, density: 1.18 },
-  { z: 3000,  name: "NIGHTFALL",  sub: "lights on",            night: 0.55, oncoming: false, cops: false, density: 1.24 },
-  { z: 5200,  name: "WRONG WAY",  sub: "left lane goes two-way", night: 0.75, oncoming: true, cops: false, density: 1.24 },
-  { z: 7800,  name: "AIR PATROL", sub: "you have been noticed", night: 0.90, oncoming: true, cops: true,  density: 1.30 },
-  { z: 10800, name: "GRIDLOCK",   sub: "no room left",         night: 1.00, oncoming: true, cops: true,  density: 1.45 },
-  { z: 14500, name: "BLACKOUT",   sub: "run on instinct",      night: 1.00, oncoming: true, cops: true,  density: 1.55 },
-  { z: 19000, name: "RED LINE",   sub: "everything, at once",  night: 1.00, oncoming: true, cops: true,  density: 1.70 },
+  { z: 1200,  name: "RUSH HOUR",  sub: "the road fills up",    night: 0.10, oncoming: false, cops: false, density: 1.05 },
+  { z: 3000,  name: "NIGHTFALL",  sub: "lights on",            night: 0.55, oncoming: false, cops: false, density: 1.09 },
+  { z: 5200,  name: "WRONG WAY",  sub: "left lane goes two-way", night: 0.75, oncoming: true, cops: false, density: 1.12 },
+  { z: 7800,  name: "AIR PATROL", sub: "you have been noticed", night: 0.90, oncoming: true, cops: true,  density: 1.16 },
+  { z: 10800, name: "GRIDLOCK",   sub: "no room left",         night: 1.00, oncoming: true, cops: true,  density: 1.20 },
+  { z: 14500, name: "BLACKOUT",   sub: "run on instinct",      night: 1.00, oncoming: true, cops: true,  density: 1.24 },
+  { z: 19000, name: "RED LINE",   sub: "everything, at once",  night: 1.00, oncoming: true, cops: true,  density: 1.28 },
 ];
 
 // Past the authored table the game keeps escalating on its own, so there is
 // always a next sector to chase and no ceiling to brag against.
 const ENDLESS_EVERY = 6000;
-const ENDLESS_DENSITY_STEP = 0.10;
-const ENDLESS_DENSITY_MAX = 2.30;
+const ENDLESS_DENSITY_STEP = 0.03;
+const ENDLESS_DENSITY_MAX = 1.45;
 
 export const SECTOR_COUNT = SECTORS.length;
 

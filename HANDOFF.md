@@ -123,6 +123,46 @@ it, and the code had written that limitation up as a design feature.
   `render3d/particles.js`), **brake lights** that blaze at the chase camera, a
   **wind/road-roar bed** that opens with speed, and **haptics**.
 
+### Then: the DENSITY FIX — the road was undriveable and nothing measured it
+
+The owner's verdict after playing the feel pass was "unplayable, way too much
+traffic", and they were right in a way that turned out to be exactly measurable.
+
+`tools/densitytest.mjs` exists now and computes the one number that decides
+whether this game can be played at all:
+
+> **THREAD RATIO = time between rows ÷ time to change one lane**
+
+Below 1.0 the next wall arrives before a lane change can physically finish. On
+the code as shipped, the ratio was **0.54** at full heat in the late sectors, and
+already below 1.0 anywhere above roughly 50% heat. There were 35 cars in view and
+95% of sampled rows had exactly one way through. It was not hard, it was a coin
+flip — and nothing in three harnesses had ever asked the question.
+
+Three compounding causes, all fixed:
+
+1. **`HEAT.densityMul` was 1.25 — density scaled UP with heat.** Heat also buys
+   speed, so a hot player met rows that were closer together *and* arriving
+   faster. The game punished you for playing it well. It is now **inverted**
+   (`heatDensity = 1 + 0.28 × (1 − heat)`): the cold player gets the busier road,
+   which is also the fix for the **death spiral** at the other end — traffic is
+   the only fuel, and the old curve handed an *emptier* road to the player who
+   most needed cars. Escalation now lives entirely in the sector table, which is
+   the right home for it: monotonic, announced, and reached faster when hot.
+2. **`SPAWN_ROW_GAP` was 80.** Divided by the old multipliers that bottomed out
+   at 17 units between rows — a fifth of a second at 108 u/s. Now **125**.
+3. **A full row left exactly one gap.** With the opposing lane live only three
+   lanes remain, and density filled all but one. `spawnRow` now **always leaves a
+   spare** beyond the guaranteed gap, so a row can be read rather than memorised.
+
+Plus: the sector density ramp was flattened (1.70 → 1.28 at RED LINE, endless max
+2.30 → 1.45) and `densityWaveAmp` cut to 0.10, because both multiply on top.
+
+Worst case is now **2.79** and nothing on the grid is below "fair". Cars in view
+went 35 → 6-9. Drain was softened (`drainBase` 0.045 → 0.040, `drainScale` 0.065
+→ 0.058) to match the thinner road, and harness section P (**COLD RECOVERY**) now
+proves a starving player can still reach enough traffic to climb out.
+
 ---
 
 ## 1. Open items (start here)
@@ -390,6 +430,20 @@ Everything numeric lives in **`src/config.js`**.
 | Camera roll | `CAMERA.roll` | 0.055 rad (~3°); Comfort Mode sets 0 |
 | Smoke/spark density | `render3d/particles.js` emitter rates | smoke `16 + 40×intensity`/s, sparks 90/s |
 
+### Density dials — **run `node tools/densitytest.mjs` after touching ANY of these**
+
+| Want to change | Knob | Now |
+|---|---|---|
+| How far apart rows are, before multipliers | `SPAWN_ROW_GAP` (`entities/traffic.js`) | 125 |
+| How much busier the road is when cold than hot | `HEAT.densityMul` | 0.28, **inverted** — see `heatDensity()` |
+| Per-sector escalation | `density` in `src/stages.js` | 1.00 → 1.28, endless caps at 1.45 |
+| Surge/breather swing | `RACE.densityWaveAmp` | 0.10 |
+| Cars in a row | `spawnRow` `extra` factor | `(dm−1) × 1.5`, floor 2, **always one spare lane** |
+
+**The rule: worst-case THREAD RATIO must stay above ~2.2.** Below 2.0 the rows
+that shift the gap two lanes at once (5% of them) become unavoidable rather than
+hard; below 1.0 the game is literally impossible.
+
 ---
 
 ## 6. How to run & verify
@@ -444,6 +498,21 @@ opposing lane; pickup/ramp spawn rates; that airborne disables traffic hits, coi
 that a ramp triggers exactly once and only in its own lane.
 
 ### Traps (hard-won — read before debugging)
+
+- **Difficulty dials that multiply are not additive in feel — they compound into
+  a wall.** Heat density × sector density × the tension wave, each individually
+  "reasonable", produced a road 4× tighter than any one of them implied, at the
+  exact moment the player was fastest. Whenever you add a multiplier to spacing,
+  run `tools/densitytest.mjs` and read the worst-case row, not the typical one.
+- **A reward that raises difficulty is a trap when the reward is also the fuel.**
+  Heat bought speed, score AND traffic density; the first two are rewards and the
+  third was a punishment wearing a reward's clothes. If a resource does four jobs
+  (this one does), check each job separately at both ends of its range.
+- **Driving the game from the devtools console blurs the window, and
+  `window.addEventListener("blur", autoPause)` pauses the race.** The symptom is
+  a dark screen with a live HUD whose numbers are frozen — it looks exactly like a
+  render crash and is not one. Check `document.getElementById("paused").className`
+  before debugging anything else.
 
 - **The harness was UNSEEDED until the FEEL pass, and its verdicts were noise.**
   The traffic sim calls `Math.random()` dozens of times a second, so identical

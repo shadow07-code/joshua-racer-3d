@@ -57,7 +57,9 @@ export const RACE = {
   // densityWavePeriod-second cycle (surge → breather → surge) so difficulty isn't
   // monotonic ON TOP of the heat-driven base density. The gap lane is always left
   // open, so every row stays threadable.
-  densityWaveAmp: 0.18,
+  // The surge half of this wave is a straight multiplier on how tight the road
+  // gets, so it comes out of the same budget as everything else.
+  densityWaveAmp: 0.10,
   densityWavePeriod: 22,
   // Gold coins scattered down the OPEN gap lane — the ideal weaving line. Grabbing
   // them rewards precise driving (and turns "avoid cars" into "chase a line").
@@ -234,8 +236,12 @@ export const HEAT = {
   start: 0.34,             // enough to be moving properly from the first frame
 
   // Decay. Hotter drains faster, so the top of the bar is a place you visit.
-  drainBase: 0.045,        // per second at zero heat
-  drainScale: 0.065,       // extra per second at full heat
+  // Drain. Softened slightly when the road was thinned out (v25): there is
+  // simply less traffic to reach now, so the same drain left a cold player
+  // losing ground even while shaving a car on every row. Still urgent — a full
+  // bar and no risk is about 16 seconds.
+  drainBase: 0.040,        // per second at zero heat
+  drainScale: 0.058,       // extra per second at full heat
 
   // Gains. Tuned so a good near-miss roughly cancels 2s of decay, and a deep
   // tailgate is worth about the same — two different routes to the same fuel.
@@ -288,7 +294,12 @@ export const HEAT = {
   speedFloor: 0.60,        // cold speed as a fraction of top — MUST outrun traffic
   speedCurve: 0.8,         // <1 so early heat pays off and cold is escapable
   scoreMul: 3.0,           // score rate at full heat vs. cold
-  densityMul: 1.25,        // traffic density at full heat vs. cold
+  // TRAFFIC DENSITY vs HEAT — now INVERTED, and much smaller. See the long note
+  // on heatDensity() in src/heat.js for why the old `1 + 1.25 * heat` was the
+  // single worst number in the project: it made the top of the game literally
+  // undriveable and the bottom of it a death spiral. This is how much BUSIER the
+  // road is when stone cold than when white hot.
+  densityMul: 0.28,
 };
 
 // The emergency lateral hop. Overrides grip entirely for its duration, which is

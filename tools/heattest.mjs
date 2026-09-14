@@ -333,7 +333,8 @@ line("J. DRIFT — does ordinary weaving produce slides?");
     line(`   ${label.padEnd(24)} ${String(banked).padStart(3)} drifts / 30s, best ${best.toFixed(2)}s, ` +
          `heat +${(heatGain / 30).toFixed(3)}/s, score ${Math.round(scoreGain).toLocaleString()}`);
   }
-  line("   (decay is 0.045-0.110/s, so drift alone must NOT out-earn it — traffic is the fuel)");
+  line(`   (decay is ${HEAT.drainBase.toFixed(3)}-${(HEAT.drainBase + HEAT.drainScale).toFixed(3)}/s, ` +
+       "so drift alone must NOT out-earn it — traffic is the fuel)");
 }
 
 // ── K. Flameout: can the fire actually kill you? ─────────────────────────────
@@ -524,4 +525,50 @@ line("\nO. SLINGSHOT — a scripted, perfect execution");
   line(`   plain shave: +${(plainHeat * 100).toFixed(1)} bar, ${Math.round(plainScore)} pts`);
   line(`   tow + slingshot: +${((towHeat + slungHeat) * 100).toFixed(1)} bar, ${Math.round(slungScore)} pts ` +
        `→ ${((towHeat + slungHeat) / plainHeat).toFixed(1)}x the fuel, ${(slungScore / plainScore).toFixed(1)}x the points`);
+}
+
+// ── P. COLD RECOVERY — the death-spiral test ────────────────────────────────
+// The question nothing here used to ask: if you are nearly out of heat, can you
+// still REACH enough traffic to climb back? Traffic is the only fuel, so this is
+// decided by the encounter rate, which is decided by row spacing and by how fast
+// a cold car closes on the pack. When density scaled UP with heat, the answer at
+// the bottom was no — an empty road for the player who most needed cars — and
+// the run was over several seconds before the bar said so.
+line("\nP. COLD RECOVERY — can a starving player reach enough traffic?");
+{
+  const AVG_TRAFFIC = PHYS.cruiseSpeed * 0.27;
+  const ST2 = ST;
+  for (const heat of [0.08, 0.34, 0.70]) {
+    const h = { v: heat, overdrive: false };
+    const sector = ST2.sectorAt(1);
+    const dm = H.heatDensity(h) * sector.density;
+    const gap = (T.SPAWN_ROW_GAP / dm);
+    const speed = PHYS.maxSpeed * H.heatSpeed01(h);
+    const rowsPerSec = Math.max(0.01, speed - AVG_TRAFFIC) / gap;
+
+    // What one row is worth to a player doing the intended thing: ride the tow
+    // for a beat, then break out and shave the same car on the way past.
+    let tow = 0;
+    for (let k = 0; k < Math.round(1.2 / DT); k++) tow += HEAT.draftRate * 0.7 * H.draftFalloff(k * DT) * DT;
+    const shave = (HEAT.nearMiss + HEAT.nearMissTight * 0.5) * SLINGSHOT.heatMul;
+    const perRow = tow + shave;
+
+    const income = perRow * rowsPerSec;
+    const drain = HEAT.drainBase + HEAT.drainScale * heat;
+    line(`   at ${(heat * 100).toFixed(0).padStart(3)}% heat: a row every ${(1 / rowsPerSec).toFixed(1)}s, ` +
+         `worth ${(perRow * 100).toFixed(0)} bar → ${(income * 100).toFixed(1)}%/s in vs ${(drain * 100).toFixed(1)}%/s out ` +
+         (income > drain * 1.15 ? "✔ climbs" : income > drain ? "~ holds" : "!! DEATH SPIRAL"));
+  }
+  line("   (a shave-only player, no tow, is the floor:)");
+  for (const heat of [0.08, 0.70]) {
+    const h = { v: heat, overdrive: false };
+    const dm = H.heatDensity(h) * ST.sectorAt(1).density;
+    const gap = T.SPAWN_ROW_GAP / dm;
+    const speed = PHYS.maxSpeed * H.heatSpeed01(h);
+    const rowsPerSec = Math.max(0.01, speed - PHYS.cruiseSpeed * 0.27) / gap;
+    const income = (HEAT.nearMiss + HEAT.nearMissTight * 0.5) * rowsPerSec;
+    const drain = HEAT.drainBase + HEAT.drainScale * heat;
+    line(`   at ${(heat * 100).toFixed(0).padStart(3)}% heat: ${(income * 100).toFixed(1)}%/s in vs ${(drain * 100).toFixed(1)}%/s out ` +
+         (income > drain ? "✔" : "— survives only by also towing"));
+  }
 }

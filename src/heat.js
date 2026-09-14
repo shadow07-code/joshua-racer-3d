@@ -132,9 +132,30 @@ export function draftFalloff(heldSeconds) {
   return HEAT.draftFadeFloor + (1 - HEAT.draftFadeFloor) * Math.exp(-t / HEAT.draftFade);
 }
 
-// Traffic density follows heat: the game feeds you exactly as hard as you are
-// playing. More cars is more fuel AND more danger, which is what stops a hot
-// streak from being a free ride.
+// Traffic density, INVERTED against heat — and that inversion is a correction,
+// not a flourish.
+//
+// It used to read `1 + 1.25 * h.v`: run hot, and the road fills up. It sounds
+// right ("more fuel AND more danger") and it was wrong twice over.
+//
+//   1. At the top it made the game IMPOSSIBLE. Density divides row spacing, and
+//      heat also buys speed, so a hot player met rows that were closer together
+//      AND arriving faster. Measured in tools/densitytest.mjs the thread ratio —
+//      time between rows over time to change one lane — fell to 0.64. The next
+//      wall arrived before a lane change could finish. The game punished you for
+//      playing it well.
+//   2. At the bottom it was a DEATH SPIRAL. Traffic is the only fuel, so a cold
+//      player was handed an emptier road, which made them colder.
+//
+// Both ends are fixed by turning it around. The cold player gets a slightly
+// busier road — fuel exactly when they are starving — and the hot player gets
+// room to use the speed they earned. The premise is untouched: drain is constant
+// and only risk pays, so playing safe still kills you. You are simply no longer
+// denied the chance to recover, or drowned for succeeding.
+//
+// Escalation now lives entirely in the SECTOR table (src/stages.js), which is the
+// right home for it: it is monotonic, it is announced, and because sectors are
+// distance-gated, driving hot still carries you into the harder ones faster.
 export function heatDensity(h) {
-  return 1 + HEAT.densityMul * h.v;
+  return 1 + HEAT.densityMul * (1 - h.v);
 }
