@@ -1,9 +1,9 @@
 // Unified input — keyboard + canvas-touch + on-screen steer pads.
 //
-// Deliberately tiny: STEER, and a DASH on a double-tap of either direction (or
-// Shift / Down on the keyboard). The car accelerates on its own — speed is HEAT —
-// so there is nothing else to hold. NOS and a brake were tried and taken out
-// again: they made the game harder to pick up without making it more fun.
+// Deliberately tiny: STEER, and nothing else. The car accelerates on its own —
+// speed is HEAT — so there is nothing to hold and nothing to press. NOS, a brake
+// and a double-tap dash were all tried and taken out again: each made the game
+// harder to pick up without making it more fun.
 import { KEYS } from "./config.js";
 
 const state = {
@@ -11,7 +11,6 @@ const state = {
   pressed: new Set(),           // edge-triggered, consumed by the main loop
 };
 
-const DASH_KEYS = ["Shift", "ArrowDown", "s", "S"];
 const heldKeys = new Set();
 const touchPoints = new Map();  // identifier -> { x, y, side }
 const btnHeld = { L: false, R: false };
@@ -35,23 +34,11 @@ function recompute() {
   state.steer = Math.max(-1, Math.min(1, s));
 }
 
-// A quick double-tap of a steer direction is the dash — on the keyboard as well
-// as the pads, so the gesture the tip teaches is the gesture both schemes use.
-const DOUBLE_TAP_MS = 280;
-const lastKeyTap = { L: -1e9, R: -1e9 };
-
 window.addEventListener("keydown", (e) => {
   if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(e.key)) e.preventDefault();
   if (!heldKeys.has(e.key)) {
     heldKeys.add(e.key);
     state.pressed.add(e.key);
-    if (DASH_KEYS.includes(e.key)) state.pressed.add("Dash");
-    const side = KEYS.left.includes(e.key) ? "L" : KEYS.right.includes(e.key) ? "R" : null;
-    if (side) {
-      const now = performance.now();
-      if (now - lastKeyTap[side] < DOUBLE_TAP_MS) { state.pressed.add("Dash" + side); lastKeyTap[side] = -1e9; }
-      else lastKeyTap[side] = now;
-    }
   }
   recompute();
 }, { passive: false });
@@ -109,13 +96,7 @@ function bindSteerButtons() {
   const btnR = document.getElementById("btn-steer-right");
   if (!btnL || !btnR) return;
   const pointerSide = new Map();   // pointerId -> side currently pressing a pad
-  // A quick double-tap on a steer pad is the emergency dash — same thumb, no new
-  // button, and it reads as a flick rather than a separate control.
-  const lastTap = { L: -1e9, R: -1e9 };
   const press = (side) => {
-    const now = performance.now();
-    if (now - lastTap[side] < DOUBLE_TAP_MS) { state.pressed.add("Dash" + side); lastTap[side] = -1e9; }
-    else lastTap[side] = now;
     btnHeld[side] = true; state.pressed.add("Touch"); recompute();
   };
   const release = (side) => { btnHeld[side] = false; recompute(); };

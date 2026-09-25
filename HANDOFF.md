@@ -133,9 +133,13 @@ it, and the code had written that limitation up as a design feature.
 ### Then: SIMPLIFIED — no brake, no NOS (2026-09-25)
 
 The owner's call after the density fix: *"remove brake and NOS… let's keep it
-simple."* The controls are now **steer, plus a dash on a double-tap** (or
-Shift/Down on the keyboard — Down went back to dash when the brake left). That
-is the whole scheme, which is where the game started.
+simple."* A day later (2026-09-26) the double-tap **DASH** went too: *"remove
+the dash too."* The controls are now **steer, and nothing else** — ◀ ▶ on the
+pads, arrows or A/D on the keyboard. That is where the game started.
+
+Nothing in the balance depended on the dash: none of the harness bots ever used
+it, and `tools/densitytest.mjs` measures the thread ratio with ordinary lane
+changes, so the 2.79 worst case is exactly what a steer-only player gets.
 
 Two things came out with them that were only there *because* of them:
 
@@ -257,9 +261,10 @@ proves a starving player can still reach enough traffic to climb out.
 
 ## 2. Direction & locked decisions (these OVERRIDE the brief)
 
-- **Controls are STEER + DASH, nothing else.** The owner removed the brake and NOS
-  on 2026-09-25 ("let's keep it simple"). Do not add a held button back without
-  asking — both were tried, and both made the game harder to pick up.
+- **Controls are STEER, nothing else.** The owner removed the brake and NOS on
+  2026-09-25 ("let's keep it simple") and the dash on 2026-09-26. Do not add any
+  button, held input or gesture back without asking — all three were tried and
+  each made the game harder to pick up.
 - **Spectacle-first.** Comfort is an **opt-in safety net** (Comfort Mode toggle), never a veto — the
   owner is fine on motion comfort.
 - **Visual target:** Need for Speed 2 SE — glossy cars, atmospheric varied environments.
@@ -373,10 +378,10 @@ updateTraffic (onPassed/onNearMiss callbacks) → rampage timer/shockwave → up
   Crash bills 45%. Zero heat starts a 4s flameout siren; let it run out and the
   run ends. Fill the bar and you enter **OVERDRIVE** — invincible smash-through
   that only sustains itself while you keep hitting cars.
-- **DASH:** an instant ~2-lane lateral hop that ignores grip and costs 10% heat —
-  the resource that keeps you alive is the one you burn to escape.
-- **Traffic density now follows HEAT**, not a clock, and the base density was
-  raised from 1 car/row to 2–4. The game feeds you exactly as hard as you play.
+- ~~**DASH**~~ — removed 2026-09-26 (owner). Steer is the only control.
+- **Traffic density is INVERTED against heat** (see §0, the DENSITY FIX): the cold
+  player gets a slightly busier road, the hot player gets room. Escalation lives
+  in the sector table. Cars per row is 2+, always leaving a spare lane.
 - **Core:** curved endless road, damped chase cam, rubber-fence edges, fog,
   speed vignette + FOV kick + speed lines, Comfort Mode.
 - **Driving feel:** asymmetric steer ease (gentle onset / snappy reversals), **lateral momentum +
@@ -425,8 +430,7 @@ Everything numeric lives in **`src/config.js`**.
 | Chain | `CHAIN` | `window` 3.2s to lapse, `cap` 30 × `step` 0.04 → ×2.2 max, `draftMin` 0.45s to count a slipstream |
 | Ranks | `src/rank.js` `RANKS` | cumulative lifetime score thresholds |
 | **THE WHOLE GAME** | `HEAT` | `drainBase`/`drainScale` set how long coasting buys you; `nearMiss`, `draftRate`/`draftRange`, `airRate`, `canister` are the refills; `crash` (0.45) is why hot = safe; `speedFloor` (0.60) **must** stay above the fastest traffic or cold becomes a death spiral |
-| Dash | `DASH` | 195 u/s for 0.24s ≈ 2.2 lanes, 0.45s cooldown |
-| Traffic amount | `SPAWN_ROW_GAP` (80) + `HEAT.densityMul` | cars/row is 2 + up to ~2.7 more with heat |
+| Traffic amount | `SPAWN_ROW_GAP` (125) + `HEAT.densityMul` (0.28, inverted) | see the density dials table below — **run `tools/densitytest.mjs` after any change** |
 | **Drift / looseness** | `PHYS.grip` (10) | **lower = more slide**, higher = planted/on-rails |
 | Drift look | `STEER.driftYaw` (0.55) | how far the nose over-rotates vs the path |
 | Steering rate | `PHYS.steerSpeed` (112), `steerEase` (16) | ease is **×3.5 on release/reversal** — do NOT make this symmetric (§6) |

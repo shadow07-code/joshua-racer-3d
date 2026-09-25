@@ -2,7 +2,7 @@
 // rubber-fence edges. PORTED from the 2D reference (src/entities/player.js); the
 // drawing is gone (render3d/models.js owns that). `x` is the lateral offset from
 // the road CENTERLINE — pure scalar, so the curve never touches this math.
-import { PHYS, ROAD, JUMP, DASH, DRIFT } from "../config.js";
+import { PHYS, ROAD, JUMP, DRIFT } from "../config.js";
 
 export function makePlayer() {
   return {
@@ -18,9 +18,6 @@ export function makePlayer() {
     driftT: 0,       // seconds of the current slide
     driftSum: 0,     // integral of |slip| over it — "how hard", not just "how long"
     driftGrace: 0,
-    dashT: 0,        // remaining dash time
-    dashCd: 0,       // dash cooldown
-    dashDir: 0,
     edgeContact: 0,  // which fence the car is against (-1/0/+1)
     bounce: 0,       // remaining inward rubber-fence rebound
     invuln: 0,
@@ -80,17 +77,8 @@ export function updatePlayer(p, dt, input, callbacks) {
   // Off a ramp the wheels have nothing to bite on, so steering authority
   // collapses to a bit of aero yaw — you commit to the line you took off with.
   const targetVx = steer * PHYS.steerSpeed * steerScale * (p.airborne ? JUMP.airSteer : 1);
-  if (p.dashCd > 0) p.dashCd = Math.max(0, p.dashCd - dt);
-  if (p.dashT > 0) {
-    // A dash ignores grip completely. That is the whole point — steering hard is
-    // something the car negotiates with its mass, a dash is something you spend.
-    p.dashT = Math.max(0, p.dashT - dt);
-    p.vx = p.dashDir * DASH.vx;
-    p.slip = p.dashDir * 0.85;                    // big yaw so a dash READS as one
-  } else {
-    p.vx += (targetVx - p.vx) * Math.min(1, dt * PHYS.grip);
-    p.slip = Math.max(-1, Math.min(1, (targetVx - p.vx) / PHYS.steerSpeed));
-  }
+  p.vx += (targetVx - p.vx) * Math.min(1, dt * PHYS.grip);
+  p.slip = Math.max(-1, Math.min(1, (targetVx - p.vx) / PHYS.steerSpeed));
   p.x += p.vx * dt;
 
   // ── DRIFT ── `slip` is already the gap between where the wheels point and
@@ -101,7 +89,7 @@ export function updatePlayer(p, dt, input, callbacks) {
   // Pinned against the barrier does not count: the wall zeroes vx anyway, and
   // rewarding wall-riding is the opposite of rewarding control.
   const sliding = Math.abs(p.vx) >= DRIFT.minVx && speedFrac2 >= DRIFT.minSpeed01
-    && !p.airborne && p.dashT <= 0 && p.edgeContact === 0;
+    && !p.airborne && p.edgeContact === 0;
   if (sliding) {
     p.driftGrace = DRIFT.graceSeconds;
     if (!p.drifting) { p.drifting = true; p.driftT = 0; p.driftSum = 0; }
@@ -187,16 +175,6 @@ export function updatePlayer(p, dt, input, callbacks) {
 
 // Abandon any slide in progress without banking it — what a crash does to a drift.
 export function cancelDrift(p) { p.drifting = false; p.driftT = 0; p.driftSum = 0; p.driftGrace = 0; }
-
-// Fire the emergency hop. Refused mid-dash, on cooldown, or in the air; the
-// caller charges the heat only when this returns true.
-export function dashPlayer(p, dir) {
-  if (p.dashT > 0 || p.dashCd > 0 || p.airborne || !dir) return false;
-  p.dashT = DASH.time;
-  p.dashCd = DASH.cooldown;
-  p.dashDir = Math.sign(dir);
-  return true;
-}
 
 // Launch off a ramp. Starts at the lip height so the arc continues the ramp
 // surface instead of snapping back to the road first.

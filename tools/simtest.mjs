@@ -139,21 +139,6 @@ const noInput = { steer: 0 };
   console.log(`   15u up:      hit=${air.hit} coin=${air.coin} nitro=${air.nitro}   (all must be false/0)`);
 }
 
-// ── 7. Dash: a real escape, and refused while it is on cooldown ──────────────
-{
-  const { dashPlayer } = await imp("entities/player.js");
-  const p = makePlayer(); p.throttle01 = 1;
-  for (let i = 0; i < 120; i++) updatePlayer(p, DT, noInput, {});
-  const x0 = p.x;
-  const fired = dashPlayer(p, 1);
-  let frames = 0;
-  while (p.dashT > 0 && frames < 120) { updatePlayer(p, DT, noInput, {}); frames++; }
-  const moved = p.x - x0;
-  const refused = !dashPlayer(p, 1);          // still inside the cooldown
-  console.log(`7. DASH     fired=${fired} moved ${moved.toFixed(1)}u in ${(frames / 60).toFixed(2)}s ` +
-              `(${(moved / (ROAD.halfWidth * 2 / ROAD.laneCount)).toFixed(1)} lanes), cooldown refuses a repeat=${refused}`);
-}
-
 // ── 8. Ramp trigger fires exactly once ───────────────────────────────────────
 {
   const sys = T.makeTrafficSystem();

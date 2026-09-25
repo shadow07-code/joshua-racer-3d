@@ -263,7 +263,6 @@ export const HEAT = {
 
   // Costs.
   crash: 0.45,             // a crash is survivable if you are hot, fatal if cold
-  dash: 0.10,              // the escape move spends the resource it protects
 
   // Zero-heat grace. Long enough for one desperate lunge at a car.
   flameoutSeconds: 4.0,
@@ -290,14 +289,6 @@ export const HEAT = {
   // undriveable and the bottom of it a death spiral. This is how much BUSIER the
   // road is when stone cold than when white hot.
   densityMul: 0.28,
-};
-
-// The emergency lateral hop. Overrides grip entirely for its duration, which is
-// what separates it from just steering hard — it is a teleport you pay for.
-export const DASH = {
-  vx: 195,                 // lateral speed while dashing (~2 lanes in one dash)
-  time: 0.24,
-  cooldown: 0.45,
 };
 
 // ── CHAIN ────────────────────────────────────────────────────────────────────

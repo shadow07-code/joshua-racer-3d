@@ -1,7 +1,7 @@
 // CONTEXTUAL TIPS — teach the game while it is being played, once each, forever.
 //
 // The tutorial card would otherwise have to explain heat, the slipstream,
-// shaves, drifting, dash, chains, sectors and overdrive. Nobody reads that, and a wall of
+// shaves, drifting, chains, sectors and overdrive. Nobody reads that, and a wall of
 // text on the title screen is the worst possible place to learn a feel. So the
 // card keeps only the one-line premise and everything else is taught at the
 // moment it first becomes relevant: the first time you tuck in behind a car, the

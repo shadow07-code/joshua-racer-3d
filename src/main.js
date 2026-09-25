@@ -22,7 +22,7 @@ import {
   startSkid, stopSkid, setSkidLevel, sfxWhoosh, startWind, setWind, stopWind,
   startHeliSound, stopHeliSound, isSfxEnabled, toggleSfx,
 } from "./audio.js";
-import { makePlayer, updatePlayer, playerBox, applyCollisionLoss, launchPlayer, dashPlayer, cancelDrift } from "./entities/player.js";
+import { makePlayer, updatePlayer, playerBox, applyCollisionLoss, launchPlayer, cancelDrift } from "./entities/player.js";
 import {
   makeTrafficSystem, prepopulateTraffic, updateTraffic, checkTrafficHit, checkCoinGrab,
   checkNitroGrab, checkRampHit, startOncoming, smashCar, draftTarget, SPAWN_ROW_GAP,
@@ -84,7 +84,7 @@ let sectorIdx = 1, sector = sectorAt(1), sectorBest = 1;
 
 // HEAT — the one resource the game runs on. See src/heat.js for why.
 const heat = makeHeat();
-let draftT = 0, draftStreak = 0, dashCount = 0;
+let draftT = 0, draftStreak = 0;
 let driftTime = 0, bestDrift = 0, skidOn = false, windOn = false;
 // SLINGSHOT bookkeeping — which car you were towing off, how long you held it,
 // and how long ago you broke out. A shave on THAT car inside the window is the
@@ -162,9 +162,8 @@ function resetWorld() {
   player.y = 0; player.vy = 0; player.airT = 0; player.airborne = false;
   player.invuln = 1.5;
   player.rampage = 0; player.throttle01 = HEAT.speedFloor;
-  player.dashT = 0; player.dashCd = 0; player.dashDir = 0;
   Object.assign(heat, makeHeat());
-  draftT = 0; draftStreak = 0; dashCount = 0;
+  draftT = 0; draftStreak = 0;
   cancelDrift(player);
   driftTime = 0; bestDrift = 0;
   draftCar = null; draftHeldFor = 0; draftSince = 1e9;
@@ -281,7 +280,6 @@ function takeHit(severity, invulnSec) {
   chain = 0; chainTimer = 0;
   crashFlash = 0.5;
   player.steerVis = 0; player.steerSmooth = 0; player.vx = 0; player.slip = 0;
-  player.dashT = 0;                               // a crash cancels a dash outright
   cancelDrift(player);                            // ... and throws away the slide
   player.steerLock = 0.45;                        // un-bank + brief straight recovery
   sfxCrash();
@@ -305,7 +303,7 @@ function endRun() {
     score: Math.floor(score.score), best: bestEverScore(), isNew,
     passed: traffic.passedCount, time: raceTime, topSpeed: topSpeedKmh, coins: coinsCollected,
     nitros: nitrosGrabbed, bestAir, night: nightT,
-    peakHeat: heat.peak, draftT, dashes: dashCount,
+    peakHeat: heat.peak, draftT,
     sector: sectorBest, sectorName: sectorAt(sectorBest).name,
     chainBest, dist: player.z, rank: banked.rank, rankedUp: banked.rankedUp,
     driftTime, bestDrift, slingshots,
@@ -503,19 +501,6 @@ function stepAttract(dt) {
 
 function stepRace(dt) {
   const input = getInput();
-  // DASH — the emergency hop. It costs heat, which is the point: the resource
-  // that keeps you alive is the same one you burn to escape, so bailing out of a
-  // bad line is never free and hoarding is never safe.
-  const dashL = consumePress("DashL"), dashR = consumePress("DashR");
-  if (dashL || dashR || consumePress("Dash")) {
-    const dir = dashL ? -1 : dashR ? 1 : (input.steer || Math.sign(player.vx) || 1);
-    if (heat.v > HEAT.dash && dashPlayer(player, dir)) {
-      addHeat(heat, -HEAT.dash);
-      dashCount++;
-      juice.addShake(0.16);
-      sfxLaunch();
-    }
-  }
 
   updatePlayer(player, dt, input, {
     onFenceBump: sfxBump,
