@@ -6,7 +6,7 @@
 // The horizon is ALWAYS level — camera.up stays +Y, the car model banks instead.
 // Comfort Mode raises the damping (smoother/laggier) via comfort.params().
 import * as THREE from "three";
-import { CAMERA, PHYS, NOS } from "../config.js";
+import { CAMERA, PHYS } from "../config.js";
 import { params as comfortParams } from "../comfort.js";
 
 export function makeChaseCam(camera, road) {
@@ -22,11 +22,8 @@ export function makeChaseCam(camera, road) {
     // camera sits. Because it eases there, gaining speed is something you SEE —
     // the world pulls away from you — and a low lens makes the ground rush.
     const sp = Math.max(0, Math.min(1, player.speed / PHYS.maxSpeed));
-    // Nitrous yanks the camera back and drops it toward the tarmac. Half the
-    // sensation of NOS in Underground was the lens moving, not the car.
-    const n = player.nos || 0;
-    const back = CAMERA.back + CAMERA.backAtSpeed * sp + NOS.camBack * n;
-    const height = CAMERA.height - CAMERA.dropAtSpeed * sp - NOS.camDrop * n;
+    const back = CAMERA.back + CAMERA.backAtSpeed * sp;
+    const height = CAMERA.height - CAMERA.dropAtSpeed * sp;
     // Ramp jumps: the camera rises with the car but deliberately lags the arc —
     // following it exactly would cancel the height out and the jump would read as
     // the world dropping away instead of the car going up.

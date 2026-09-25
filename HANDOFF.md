@@ -68,6 +68,9 @@ grade, score, rank bar with a rank-up flash, and eight stats.
 
 ### Then: the UNDERGROUND pass — NOS and DRIFT
 
+> **NOS WAS REMOVED on 2026-09-25 at the owner's request** ("remove brake and NOS,
+> let's keep it simple"). DRIFT survives. What follows is kept as history.
+
 Aimed squarely at NFS Underground. Two verbs, one structural idea:
 
 - **THE HEAT BAR IS THE NOS BOTTLE.** Holding NOS burns the same resource that is
@@ -85,6 +88,10 @@ Aimed squarely at NFS Underground. Two verbs, one structural idea:
 - **DASH moved to a double-tap of a steer pad**, freeing the centre for NOS.
 
 ### Then: the FEEL pass — the BRAKE, the SLINGSHOT, and a road with hills
+
+> **The BRAKE and the tow decay were REMOVED on 2026-09-25** — see "SIMPLIFIED"
+> below. The SLINGSHOT, the hills, the audible shave, particles, camera roll,
+> wind bed and haptics all survive. Kept as history.
 
 The game had been through four redesigns without ever acquiring the most basic
 verb in racing. Speed was a pure readout of HEAT: you could ask for more of it
@@ -120,8 +127,34 @@ it, and the code had written that limitation up as a design feature.
   trap in §6: wavelength matters far more than amplitude here.
 - Plus: a **camera that rolls** a few degrees with the slide (Comfort Mode zeroes
   it), **particles** (tyre smoke, barrier sparks, impact debris —
-  `render3d/particles.js`), **brake lights** that blaze at the chase camera, a
-  **wind/road-roar bed** that opens with speed, and **haptics**.
+  `render3d/particles.js`), a **wind/road-roar bed** that opens with speed, and
+  **haptics**.
+
+### Then: SIMPLIFIED — no brake, no NOS (2026-09-25)
+
+The owner's call after the density fix: *"remove brake and NOS… let's keep it
+simple."* The controls are now **steer, plus a dash on a double-tap** (or
+Shift/Down on the keyboard — Down went back to dash when the brake left). That
+is the whole scheme, which is where the game started.
+
+Two things came out with them that were only there *because* of them:
+
+- **The tow decay** (`draftFade`/`draftFadeFloor`) existed to stop a braking
+  player parking in a wake forever. Without a brake that is physically
+  impossible — the slowest the car can ever go (cold floor, 65 u/s) out-runs the
+  fastest civilian (41 u/s), so no tow can last more than ~2.6s. Harness section
+  B now proves that bound directly.
+- **`draftLinkEvery`** kept the chain lit through a long held tow. A tow can no
+  longer outlast the 3.2s chain window, so it did nothing.
+
+**Removing them made the economy healthier, not weaker.** The decay was
+quietly nerfing *every* slipstream, including for players who never touched the
+brake. The racer bot went **4,725 → 11,952** and reaches a sector further. The
+slingshot still works without the brake — the tow simply builds on the way in —
+and still pays 3.6× the fuel of a plain shave (section O).
+
+On a phone this is also a visual win: the BRAKE and NOS pads sat directly over
+the car. The centre of the screen is now just road.
 
 ### Then: the DENSITY FIX — the road was undriveable and nothing measured it
 
@@ -224,6 +257,9 @@ proves a starving player can still reach enough traffic to climb out.
 
 ## 2. Direction & locked decisions (these OVERRIDE the brief)
 
+- **Controls are STEER + DASH, nothing else.** The owner removed the brake and NOS
+  on 2026-09-25 ("let's keep it simple"). Do not add a held button back without
+  asking — both were tried, and both made the game harder to pick up.
 - **Spectacle-first.** Comfort is an **opt-in safety net** (Comfort Mode toggle), never a veto — the
   owner is fine on motion comfort.
 - **Visual target:** Need for Speed 2 SE — glossy cars, atmospheric varied environments.
@@ -384,8 +420,7 @@ Everything numeric lives in **`src/config.js`**.
 
 | What | Where | Notes |
 |---|---|---|
-| NOS | `NOS` | `burn` 0.115/s (a full bar ≈ 4.6s), `speedMul` 1.24, `fovKick`/`camBack`/`camDrop` are the Underground shot |
-| Drift | `DRIFT` | `minVx` 42 of ~73 max — commitment, not a nudge. `heatPerSec` MUST stay under the 0.045–0.110/s decay or drifting becomes a way to survive without traffic |
+| Drift | `DRIFT` | `minVx` 42 of ~73 max — commitment, not a nudge. `heatPerSec` MUST stay under the 0.040–0.098/s decay or drifting becomes a way to survive without traffic |
 | Sectors | `src/stages.js` `SECTORS` | distance thresholds + per-sector night/oncoming/cops/density. Endless past the table |
 | Chain | `CHAIN` | `window` 3.2s to lapse, `cap` 30 × `step` 0.04 → ×2.2 max, `draftMin` 0.45s to count a slipstream |
 | Ranks | `src/rank.js` `RANKS` | cumulative lifetime score thresholds |
@@ -415,16 +450,12 @@ Everything numeric lives in **`src/config.js`**.
 
 ---
 
-### Feel dials added by the FEEL pass
+### Feel dials
 
 | Want to change | Knob | Now |
 |---|---|---|
-| How hard the brake bites | `BRAKE.power` | 52 (vs `PHYS.drag` 5) |
-| How slow the brake will take you | `BRAKE.floor01` | 0.30 — **must stay under the fastest traffic** (0.35 of cruise) |
-| Brake-to-turn sharpness | `BRAKE.steerBonus` / `gripBonus` | 0.30 / 0.55 → 35% more lateral |
-| How fast a tow loses value | `HEAT.draftFade` / `draftFadeFloor` | 1.6s e-fold, floors at 0.12 — **the floor must stay below `HEAT.drainBase` (0.045) or parking becomes viable** |
 | Slingshot payout | `SLINGSHOT.heatMul` / `scoreMul` | 1.8 / 2.2 |
-| How long after leaving a tow a shave still counts | `SLINGSHOT.window` | 1.6s — breaking out and getting past genuinely takes ~1.2s |
+| How long after leaving a tow a shave still counts | `SLINGSHOT.window` | 1.6s — generous, because it only ever pays on the SAME car |
 | Hill size | `CURVE.elevAmp1/2` | 9 / 6 → road spans y 0–30 |
 | Hill length | `CURVE.elevFreq1/2` | ~1100 / ~2600-unit wavelengths |
 | Camera roll | `CAMERA.roll` | 0.055 rad (~3°); Comfort Mode sets 0 |
@@ -477,7 +508,8 @@ const { makePlayer, updatePlayer } = await imp("entities/player.js");
 now also covers the opposing lane, nitro, ramps and the jump arc — see the pattern in §6A below.
 
 **§6B. `node tools/heattest.mjs`** — the BALANCE harness. Sections G/H print the
-sector and rank ladders; **I** checks the NOS trade, **J** sweeps drift across
+sector and rank ladders (I, L and M were the NOS/brake/tow-decay checks and
+went with those systems); **J** sweeps drift across
 weave styles (this is what caught the slip-vs-velocity bug), and **K** asserts the
 fire can actually kill: grazing must die, doing nothing must die at exactly
 `flameoutSeconds`, and one real shave must visibly buy time, and the most important

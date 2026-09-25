@@ -160,21 +160,6 @@ export function makeCar() {
 
   function setSteer(angle) { frontL.rotation.y = angle; frontR.rotation.y = angle; }
 
-  // ── BRAKE LIGHTS ── The chase camera looks straight at the back of this car,
-  // so the tail lamps are the largest single piece of feedback surface in the
-  // whole frame — and until the brake existed they only ever did one thing.
-  // Now they blaze on the brake, which is what tells you (and, if this is ever
-  // recorded, anyone watching) that a slowdown was a DECISION.
-  let brakeLevel = 0, nightLevel = 0;
-  function applyTail() {
-    tailMat.emissiveIntensity = 2.2 + 1.6 * nightLevel + 6.0 * brakeLevel;
-  }
-  function setBrake(b) {
-    const v = Math.max(0, Math.min(1, b || 0));
-    if (v === brakeLevel) return;
-    brakeLevel = v;
-    applyTail();
-  }
   function setRampage(on, t = 0) {
     aura.visible = on;
     if (on) {
@@ -184,10 +169,11 @@ export function makeCar() {
   }
 
   // Nightfall: lamps come up, the beams and pool switch on, the underglow lights.
+  let nightLevel = 0;
   function setNight(n) {
     nightLevel = n;
     headMat.emissiveIntensity = 1.0 + 3.4 * n;
-    applyTail();
+    tailMat.emissiveIntensity = 2.2 + 1.6 * n;
     beamMat.opacity = 0.085 * n;
     poolMat.opacity = 0.40 * n;
     underMat.opacity = 0.34 * n;
@@ -204,7 +190,7 @@ export function makeCar() {
     poolMat.opacity = 0.40 * nightLevel * fade;
   }
 
-  return { root, body, setSteer, setRampage, setNight, setAir, setBrake };
+  return { root, body, setSteer, setRampage, setNight, setAir };
 }
 
 function makeLetterTexture(ch) {

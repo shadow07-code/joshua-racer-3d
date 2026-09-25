@@ -367,50 +367,19 @@ export function startWind() {
   windSrc.connect(windFilt); windFilt.connect(windGain); windGain.connect(sfxGain);
   windSrc.start();
 }
-// speed01 is 0..1+ of rated top speed; `nos` lifts the whole bed so nitrous
-// arrives as air as well as a roar.
-export function setWind(speed01, nos = 0) {
+// speed01 is 0..1+ of rated top speed.
+export function setWind(speed01) {
   if (!windGain || !ctx) return;
   const t = ctx.currentTime;
   const v = Math.max(0, Math.min(1.3, speed01));
-  windGain.gain.setTargetAtTime(0.010 + 0.055 * v * v + 0.030 * nos, t, 0.12);
-  windFilt.frequency.setTargetAtTime(320 + 2200 * v + 900 * nos, t, 0.15);
+  windGain.gain.setTargetAtTime(0.010 + 0.055 * v * v, t, 0.12);
+  windFilt.frequency.setTargetAtTime(320 + 2200 * v, t, 0.15);
 }
 export function stopWind() {
   if (!windSrc) return;
   try { windSrc.stop(); } catch {}
   windSrc.disconnect(); windGain.disconnect(); windFilt.disconnect();
   windSrc = windGain = windFilt = null;
-}
-
-// ── NITROUS ── a held roar: the crack of the bottle, then a resonant blast whose
-// brightness tracks how far the spool has wound in.
-let nosSrc = null, nosGain = null, nosFilt = null;
-export function startNos() {
-  if (!ctx || nosSrc) return;
-  const t = ctx.currentTime;
-  nosSrc = ctx.createBufferSource(); nosSrc.buffer = getNoiseBuf(); nosSrc.loop = true;
-  nosFilt = ctx.createBiquadFilter(); nosFilt.type = "bandpass"; nosFilt.frequency.value = 700; nosFilt.Q.value = 1.1;
-  nosGain = ctx.createGain(); nosGain.gain.value = 0;
-  nosSrc.connect(nosFilt); nosFilt.connect(nosGain); nosGain.connect(sfxGain);
-  nosSrc.start();
-  // The purge: a short bright hiss on the way in, so engaging has an attack.
-  const p = ctx.createBufferSource(); p.buffer = getNoiseBuf();
-  const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 3200;
-  const pg = ctx.createGain(); pg.gain.value = 0.22; pg.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
-  p.connect(hp); hp.connect(pg); pg.connect(sfxGain); p.start(t); p.stop(t + 0.3);
-}
-export function setNosLevel(l) {
-  if (!nosGain || !ctx) return;
-  const t = ctx.currentTime, v = Math.max(0, Math.min(1, l));
-  nosGain.gain.setTargetAtTime(0.19 * v, t, 0.05);
-  nosFilt.frequency.setTargetAtTime(600 + 2800 * v, t, 0.08);
-}
-export function stopNos() {
-  if (!nosSrc) return;
-  try { nosSrc.stop(); } catch {}
-  nosSrc.disconnect(); nosGain.disconnect(); nosFilt.disconnect();
-  nosSrc = nosGain = nosFilt = null;
 }
 
 // ── Helicopter rotor — continuous while choppers are on-screen ──

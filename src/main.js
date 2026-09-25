@@ -3,12 +3,12 @@
 // plus an online LEADERBOARD reachable from the title and game-over. The 3D world
 // keeps animating as a live attract scene behind the menus.
 import * as THREE from "three";
-import { PHYS, STEER, SCORE, RACE, ONCOMING, NITRO, JUMP, NIGHT, HEAT, CHAIN, NOS, DRIFT, SLINGSHOT } from "./config.js";
+import { PHYS, STEER, SCORE, RACE, ONCOMING, NITRO, JUMP, NIGHT, HEAT, CHAIN, DRIFT, SLINGSHOT } from "./config.js";
 import { sectorIndexAt, sectorAt, nextSectorZ, sectorStartZ } from "./stages.js";
 import { currentRank, bankRun } from "./rank.js";
 import { tipOnce, TIPS } from "./tips.js";
 import {
-  makeHeat, addHeat, updateHeat, heatSpeed01, heatScoreMul, heatDensity, TIERS, draftFalloff,
+  makeHeat, addHeat, updateHeat, heatSpeed01, heatScoreMul, heatDensity, TIERS,
 } from "./heat.js";
 import { initInput, getInput, consumePress, clearSteer } from "./input.js";
 import * as juice from "./juice.js";
@@ -18,7 +18,7 @@ import { initPwa, setInstallButtonVisible } from "./pwa.js";
 import {
   initAudio, resumeAudio, suspendAudio, startEngine, stopEngine, setEngine, setEngineRampage,
   sfxNearMiss, sfxCombo, sfxBump, sfxCrash, sfxRampage, sfxShockwave, sfxBarrelDrop, sfxGameOver, sfxCoin, sfxShift,
-  sfxNitro, sfxHorn, sfxLaunch, sfxLand, sfxAlert, startNos, stopNos, setNosLevel,
+  sfxNitro, sfxHorn, sfxLaunch, sfxLand, sfxAlert,
   startSkid, stopSkid, setSkidLevel, sfxWhoosh, startWind, setWind, stopWind,
   startHeliSound, stopHeliSound, isSfxEnabled, toggleSfx,
 } from "./audio.js";
@@ -85,12 +85,12 @@ let sectorIdx = 1, sector = sectorAt(1), sectorBest = 1;
 // HEAT — the one resource the game runs on. See src/heat.js for why.
 const heat = makeHeat();
 let draftT = 0, draftStreak = 0, dashCount = 0;
-let nosTime = 0, driftTime = 0, bestDrift = 0, nosSoundOn = false, skidOn = false, windOn = false;
+let driftTime = 0, bestDrift = 0, skidOn = false, windOn = false;
 // SLINGSHOT bookkeeping — which car you were towing off, how long you held it,
 // and how long ago you broke out. A shave on THAT car inside the window is the
 // move the whole economy was pointing at, so it gets a name and a payout.
-let draftCar = null, draftHeldFor = 0, draftSince = 1e9, draftLinkT = 0, draftHeldLinked = false;
-let brakeTime = 0, slingshots = 0;
+let draftCar = null, draftHeldFor = 0, draftSince = 1e9;
+let slingshots = 0;
 let smokeAcc = 0, sparkAcc = 0;
 
 // ── Game state + scoring ──
@@ -165,14 +165,11 @@ function resetWorld() {
   player.dashT = 0; player.dashCd = 0; player.dashDir = 0;
   Object.assign(heat, makeHeat());
   draftT = 0; draftStreak = 0; dashCount = 0;
-  player.nosOn = false; player.nos = 0;
-  player.braking = false; player.brakeBlend = 0;
   cancelDrift(player);
-  nosTime = 0; driftTime = 0; bestDrift = 0;
-  draftCar = null; draftHeldFor = 0; draftSince = 1e9; draftLinkT = 0; draftHeldLinked = false;
-  brakeTime = 0; slingshots = 0; smokeAcc = 0; sparkAcc = 0;
+  driftTime = 0; bestDrift = 0;
+  draftCar = null; draftHeldFor = 0; draftSince = 1e9;
+  slingshots = 0; smokeAcc = 0; sparkAcc = 0;
   particles.clear();
-  if (nosSoundOn) { stopNos(); nosSoundOn = false; }
   if (skidOn) { stopSkid(); skidOn = false; }
   traffic.list.length = 0; traffic.coins.length = 0; traffic.nextRowZ = 80; traffic.lastGapLane = 2;
   traffic.rowsSpawned = 0; traffic.passedCount = 0; traffic.rowGapZ = SPAWN_ROW_GAP;
@@ -301,7 +298,6 @@ function endRun() {
   setEngineRampage(false); stopEngine();
   stopWind(); windOn = false;
   if (heliSoundOn) { stopHeliSound(); heliSoundOn = false; }
-  if (nosSoundOn) { stopNos(); nosSoundOn = false; }
   if (skidOn) { stopSkid(); skidOn = false; }
   sfxGameOver();
   juice.rumble([90, 60, 140]);
@@ -312,7 +308,7 @@ function endRun() {
     peakHeat: heat.peak, draftT, dashes: dashCount,
     sector: sectorBest, sectorName: sectorAt(sectorBest).name,
     chainBest, dist: player.z, rank: banked.rank, rankedUp: banked.rankedUp,
-    nosTime, driftTime, bestDrift, slingshots,
+    driftTime, bestDrift, slingshots,
   };
   hud.showGameOver(run);
   setState(STATE.GAMEOVER);
@@ -328,7 +324,6 @@ function pauseGame() {
   setEngineRampage(false); stopEngine();
   stopWind(); windOn = false;
   if (skidOn) { stopSkid(); skidOn = false; }
-  if (nosSoundOn) { stopNos(); nosSoundOn = false; player.nosOn = false; }
   if (heliSoundOn) { stopHeliSound(); heliSoundOn = false; }
   pauseMusic();
   suspendAudio();
@@ -522,19 +517,6 @@ function stepRace(dt) {
     }
   }
 
-  // ── NOS ── The heat bar IS the bottle. Holding the button burns the resource
-  // that is simultaneously your speed, your score and your life, so every second
-  // on it is borrowed against staying alive. That trade is the point.
-  player.nosOn = !!input.nos && heat.v > NOS.minHeat && !heat.dead;
-  if (player.nos > 0.01) {
-    addHeat(heat, -NOS.burn * player.nos * dt);
-    score.score += NOS.scorePerSec * player.nos * chainMul() * dt;
-    nosTime += player.nos * dt;
-  }
-  if (player.nosOn && !nosSoundOn) { startNos(); nosSoundOn = true; }
-  else if (!player.nosOn && nosSoundOn) { stopNos(); nosSoundOn = false; }
-  if (nosSoundOn) setNosLevel(player.nos);
-
   updatePlayer(player, dt, input, {
     onFenceBump: sfxBump,
     onLand: onLanded,
@@ -714,40 +696,31 @@ function stepRace(dt) {
   if (draft) {
     draftT += dt;
     draftStreak += dt;
-    draftLinkT += dt;
     draftCar = draft.car;
-    // THE TOW RUNS OUT. Now that the brake lets you match pace and sit there
-    // indefinitely, an undecayed draft would be a heat fountain — park behind a
-    // bus, never take another risk, win. The value decays with how long you have
-    // held it, so holding stays correct and parking never is.
-    addHeat(heat, HEAT.draftRate * draft.closeness * draftFalloff(draftStreak) * dt);
-    // A long tow is a risk you are taking RIGHT NOW, so it keeps the chain lit
-    // rather than letting it lapse under you while you do the hard thing.
-    if (draftLinkT >= HEAT.draftLinkEvery) { draftLinkT = 0; draftHeldLinked = true; linkChain(); }
+    // You always out-run the car in front, so a tow ends on its own — the move is
+    // to hold your nerve on the bumper and swerve out as late as you dare.
+    addHeat(heat, HEAT.draftRate * draft.closeness * dt);
   } else if (draftStreak > 0) {
     // A slipstream only LINKS if you actually held it — leaning on someone's
     // bumper for a moment is the risk; brushing past them is not.
-    if (draftStreak > CHAIN.draftMin && !draftHeldLinked) linkChain();
+    if (draftStreak > CHAIN.draftMin) linkChain();
     if (draftStreak > 1.0) hud.popup("SLIPSTREAM", "nitro");     // only the real ones
     draftHeldFor = draftStreak;
     draftSince = 0;
-    draftStreak = 0; draftLinkT = 0; draftHeldLinked = false;
+    draftStreak = 0;
   }
   if (player.airborne) addHeat(heat, HEAT.airRate * chainMul() * dt);
 
-  // A slide you can HEAR — and now SEE — is worth far more than one you can only
-  // infer from a number. Heavy braking squeals too: locking up at speed is the
-  // loudest thing a road car does, and it is the clearest possible confirmation
-  // that the new pedal is connected to something.
+  // A slide you can HEAR — and SEE — is worth far more than one you can only
+  // infer from a number: this is what tells the player they are doing the thing
+  // the game rewards.
   const lateral = Math.min(1, Math.abs(player.vx) / PHYS.steerSpeed);
-  const hardBrake = player.brakeBlend * Math.max(0, (player.speed / PHYS.maxSpeed - 0.45) / 0.55);
-  const skidLevel = player.airborne ? 0 : Math.max(player.drifting ? lateral : 0, hardBrake);
+  const skidLevel = (player.airborne || !player.drifting) ? 0 : lateral;
   const skidding = skidLevel > 0.12;
   if (skidding && !skidOn) { startSkid(); skidOn = true; }
   else if (!skidding && skidOn) { stopSkid(); skidOn = false; }
   if (skidOn) setSkidLevel(skidLevel);
   if (skidding) emitTyreSmoke(dt, skidLevel);
-  if (player.braking) brakeTime += dt;
 
   // Grinding the barrier throws sparks. It used to cost speed in silence and
   // darkness, which made the edge of the road feel like a bug rather than a wall.
@@ -760,9 +733,7 @@ function stepRace(dt) {
   // to matter. One at a time, so a first run is coached rather than lectured.
   if (draftStreak > 0.9 && tipOnce("slingshot")) hud.tip(TIPS.slingshot);
   else if (draftStreak > 0.35 && tipOnce("draft")) hud.tip(TIPS.draft);
-  else if (raceTime > 3 && brakeTime < 0.05 && draftStreak > 0.15 && tipOnce("brake")) hud.tip(TIPS.brake);
   else if (player.drifting && player.driftT > 0.3 && tipOnce("drift")) hud.tip(TIPS.drift);
-  else if (heat.v > 0.5 && tipOnce("nos")) hud.tip(TIPS.nos);
   else if (heat.v < 0.18 && raceTime > 6 && tipOnce("lowHeat")) hud.tip(TIPS.lowHeat);
   else if (chain >= 5 && tipOnce("chain")) hud.tip(TIPS.chain);
 
@@ -805,9 +776,9 @@ function stepRace(dt) {
   const gearNow = gearAt(speed01).gear;
   if (gearNow > lastGear) { sfxShift(); juice.addShake(0.07); }
   lastGear = gearNow;
-  setWind(speed01, player.nos || 0);
+  setWind(speed01);
   particles.update(dt);
-  const fov = effects.update(dt, speed01, player.nos || 0);
+  const fov = effects.update(dt, speed01);
   chase.update(dt, player, fov);
 }
 
@@ -844,7 +815,6 @@ function render() {
   road.worldPos(player.z, player.x, _carPos);
   car.root.position.copy(_carPos);
   car.root.position.y += player.y || 0;            // ramp jumps lift the whole car
-  car.setBrake(player.brakeBlend || 0);            // the chase cam stares at the tail lamps
   car.setAir(player.y || 0);                       // ...but its shadow stays on the road
   // Nose yaw = road heading + steering intent + SLIP. The slip term is the drift:
   // the car rotates into a turn ahead of its mass, and counter-settles on release.
@@ -891,8 +861,7 @@ function render() {
     heat: heat.v, heatTier: heat.tier, overdrive: heat.overdrive,
     flameout: heat.flameout, drafting: state === STATE.RACE && draftStreak > 0,
     mult: heatScoreMul(heat), airborne: !!player.airborne,
-    nos: player.nos, drifting: player.drifting, driftT: player.driftT,
-    braking: player.brakeBlend || 0,
+    drifting: player.drifting, driftT: player.driftT,
   });
   fx.render();
   camera.position.x -= _shake.x; camera.position.y -= _shake.y;

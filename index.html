@@ -286,35 +286,6 @@
     .popup.nitro     { color: #4ff0d4; font-size: 30px; text-shadow: 0 0 18px rgba(70,240,210,0.95), 0 2px 10px rgba(0,0,0,0.7); }
     .popup.drift     { color: #8fe7ff; font-size: 28px; text-shadow: 0 0 18px rgba(90,210,255,0.95), 0 2px 10px rgba(0,0,0,0.7); }
     .popup.crash     { color: #ff5a7a; font-size: 28px; text-shadow: 0 0 16px rgba(255,60,90,0.9), 0 2px 10px rgba(0,0,0,0.8); }
-    /* NOS takes the centre pad. Needs to out-specify "#steer-controls button",
-       which sets a 40%-wide, 64px-font arrow. Held, not tapped. */
-    #steer-controls #btn-nos { left: 50%; right: auto;
-      bottom: calc(env(safe-area-inset-bottom) + 12%);
-      transform: translateX(-50%); width: clamp(92px, 17vw, 128px);
-      height: clamp(38px, 12vh, 54px); max-height: 54px;
-      border-radius: 27px; font-size: clamp(11px, 3vh, 15px); font-weight: 900; letter-spacing: 4px;
-      background: rgba(80,220,255,0.16); border: 2px solid rgba(120,235,255,0.6);
-      color: #bff2ff; text-shadow: 0 0 10px rgba(90,220,255,0.7);
-      box-shadow: 0 0 18px rgba(70,200,255,0.25) inset; transition: opacity 0.2s; }
-    #steer-controls #btn-nos:active { background: rgba(120,240,255,0.55); color: #fff;
-      box-shadow: 0 0 34px rgba(120,240,255,0.9); transform: translateX(-50%) scale(0.95); }
-    #steer-controls #btn-nos.dry { opacity: 0.32; }
-
-    /* BRAKE sits directly ABOVE the NOS pad — same centre column, so one thumb
-       slides between "more" and "less" without hunting. Same specificity trick
-       as #btn-nos, or the 40%-wide arrow rule swallows the middle of the road. */
-    #steer-controls #btn-brake { left: 50%; right: auto;
-      bottom: calc(env(safe-area-inset-bottom) + 12% + clamp(44px, 13.5vh, 62px));
-      transform: translateX(-50%); width: clamp(92px, 17vw, 128px);
-      height: clamp(34px, 10vh, 48px); max-height: 48px;
-      border-radius: 24px; font-size: clamp(10px, 2.7vh, 14px); font-weight: 900; letter-spacing: 4px;
-      background: rgba(255,110,90,0.14); border: 2px solid rgba(255,140,110,0.55);
-      color: #ffc9bd; text-shadow: 0 0 10px rgba(255,120,90,0.7);
-      box-shadow: 0 0 18px rgba(255,100,70,0.22) inset; transition: opacity 0.2s; }
-    #steer-controls #btn-brake:active, #steer-controls #btn-brake.on {
-      background: rgba(255,120,90,0.55); color: #fff;
-      box-shadow: 0 0 34px rgba(255,130,100,0.9); transform: translateX(-50%) scale(0.95); }
-
     /* Live drift readout — the slide is worth something, so it needs a number. */
     #drift { position: absolute; top: 27%; left: 50%; transform: translateX(-50%);
       text-align: center; opacity: 0; transition: opacity 0.12s; pointer-events: none; }
@@ -432,7 +403,7 @@
     <div id="rampage-msg"></div>
     <div id="tip"><span id="tip-text"></span></div>
     <div id="heat">
-      <div id="heat-label"><span id="heat-tier">COLD</span><span id="heat-hint">BRAKE TO TOW · SHAVE · SLIDE</span></div>
+      <div id="heat-label"><span id="heat-tier">COLD</span><span id="heat-hint">TAILGATE · SHAVE · SLIDE</span></div>
       <div id="heat-track"><div id="heat-fill"></div></div>
     </div>
     <div id="speed-wrap">
@@ -459,8 +430,6 @@
 
   <div id="steer-controls" aria-hidden="true">
     <button id="btn-steer-left" aria-label="Steer left">◀</button>
-    <button id="btn-brake" aria-label="Brake">BRAKE</button>
-    <button id="btn-nos" aria-label="Nitrous">NOS</button>
     <button id="btn-steer-right" aria-label="Steer right">▶</button>
   </div>
 
@@ -514,7 +483,6 @@
         <div class="go-stat">PEAK HEAT<b id="go-peak">0%</b></div>
         <div class="go-stat">BEST CHAIN<b id="go-chain">0</b></div>
         <div class="go-stat">DISTANCE<b id="go-dist">0 m</b></div>
-        <div class="go-stat">NOS TIME<b id="go-nos">0.0S</b></div>
         <div class="go-stat">BEST DRIFT<b id="go-drift">0.0S</b></div>
         <div class="go-stat">SLINGSHOTS<b id="go-slings">0</b></div>
       </div>
@@ -536,7 +504,7 @@
       <button id="title-board" class="ghost-btn">🏆 LEADERBOARD</button>
       <button id="btn-install" class="ghost-btn" aria-label="Install the game for offline play">📲 ADD TO HOME SCREEN</button>
     </div>
-    <div class="title-hint">◀ ▶ steer · hold BRAKE (down) to sit in a tow · hold NOS (space) · double-tap to dash</div>
+    <div class="title-hint">◀ ▶ steer · double-tap to dash · tailgate, shave and slide for HEAT</div>
   </div>
 
   <!-- Pre-race name entry -->
@@ -568,9 +536,9 @@
   <div id="tutorial" class="overlay modal-overlay" role="dialog" aria-label="How to play">
     <div class="panel-box">
       <div class="panel-title">HOW TO PLAY</div>
-      <div class="tut-body"><b>HEAT is everything</b> — your speed, your score, your life, and your <b>NOS bottle</b>.<br>It drains constantly. <b>Playing safe kills you.</b></div>
-      <div class="tut-keys"><span>◀ ▶ STEER</span><span>HOLD BRAKE</span><span>HOLD NOS</span><span>DOUBLE-TAP = DASH</span></div>
-      <div class="tut-body tut-tip">Refill it by driving dangerously — <b>brake to sit in a car's tow</b>, then break out and shave past. The game will show you the rest as you go.</div>
+      <div class="tut-body"><b>HEAT is everything</b> — your speed, your score and your life.<br>It drains constantly. <b>Playing safe kills you.</b></div>
+      <div class="tut-keys"><span>◀ ▶ STEER</span><span>DOUBLE-TAP = DASH</span></div>
+      <div class="tut-body tut-tip">Refill it by driving dangerously — <b>tuck in behind a car</b>, then swerve out late and shave past. The game will show you the rest as you go.</div>
       <div class="panel-row">
         <button id="tut-skip" class="ghost-btn">SKIP</button>
         <button id="tut-play" class="big-btn">DRIVE</button>
