@@ -190,16 +190,17 @@
     #pips .pip.flash { animation: pipflash 0.4s ease-in-out infinite; }
     @keyframes pipflash { 0%,100% { box-shadow: 0 0 6px rgba(255,200,60,0.6); } 50% { box-shadow: 0 0 16px rgba(255,220,90,1); } }
 
-    /* Toolbar — music + comfort toggles */
+    /* Toolbar — pause, SOUND on/off, comfort. Above the menus (overlays are 44,
+       game-over 45) so the sound switch works on the title screen too; below the
+       install splash (50), which is meant to cover everything. */
     #toolbar { position: fixed; top: calc(env(safe-area-inset-top) + 10px);
-      right: calc(env(safe-area-inset-right) + 12px); z-index: 30; display: flex; gap: 8px; }
+      right: calc(env(safe-area-inset-right) + 12px); z-index: 46; display: flex; gap: 8px; }
     #toolbar button {
       background: rgba(20,16,40,0.8); color: #fff; border: 2px solid #ff8a4c; border-radius: 8px;
       padding: clamp(5px, 1.5vh, 9px) clamp(7px, 2vh, 12px); font: inherit;
       font-size: clamp(9px, 2.5vh, 13px); font-weight: 700; letter-spacing: 1px; cursor: pointer;
     }
     #toolbar button:active { background: rgba(255,138,76,0.85); color: #1a1430; }
-    #btn-music { min-width: 44px; }
 
     /* On-screen steering pads */
     #steer-controls { position: fixed; inset: 0; z-index: 28; pointer-events: none; display: none; }
@@ -424,8 +425,7 @@
 
   <div id="toolbar">
     <button id="btn-pause" aria-label="Pause">⏸</button>
-    <button id="btn-music" aria-label="Toggle music">🎵</button>
-    <button id="btn-sfx" aria-label="Toggle sound effects">🔊</button>
+    <button id="btn-sfx" aria-label="Sound on or off" aria-pressed="true">🔊 SOUND: ON</button>
     <button id="btn-comfort">COMFORT: OFF</button>
   </div>
 

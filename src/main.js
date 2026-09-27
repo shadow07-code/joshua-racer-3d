@@ -13,7 +13,6 @@ import {
 import { initInput, getInput, consumePress, clearSteer } from "./input.js";
 import * as juice from "./juice.js";
 import { toggleComfort, isComfort } from "./comfort.js";
-import { initMusic, startOnce, toggleMute, isMuted, pauseMusic, resumeMusic } from "./music.js";
 import { initPwa, setInstallButtonVisible } from "./pwa.js";
 import {
   initAudio, resumeAudio, suspendAudio, startEngine, stopEngine, setEngine, setEngineRampage,
@@ -61,7 +60,6 @@ const effects = makeEffects();
 const particles = makeParticles(scene);
 const fx = makeComposer(renderer, scene, camera);
 initInput(canvas);
-initMusic();
 initPwa();
 
 const player = makePlayer();
@@ -135,7 +133,6 @@ function markTutorialSeen() { try { localStorage.setItem(TUTORIAL_KEY, "1"); } c
 
 const hud = makeHud(() => playAgain());
 const comfortBtn = document.getElementById("btn-comfort");
-const musicBtn = document.getElementById("btn-music");
 const sfxBtn = document.getElementById("btn-sfx");
 const pauseBtn = document.getElementById("btn-pause");
 const hudEl = document.getElementById("hud");
@@ -158,7 +155,7 @@ function syncOverlays() {
 }
 function setState(s) { state = s; syncOverlays(); }
 
-function ensureAudio() { initAudio(); resumeAudio(); startOnce(); }
+function ensureAudio() { initAudio(); resumeAudio(); }
 
 // Reset the whole world for a fresh run (also used to populate the attract scene).
 function resetWorld() {
@@ -213,7 +210,7 @@ function goTitle() {
   const r = currentRank();
   ui.setTitleBest(
     "RANK " + r.index + " · " + r.name + (best ? "   —   BEST " + best.toLocaleString() : ""));
-  resumeAudio(); resumeMusic();                 // ambient music on the title
+  resumeAudio();
   setState(STATE.TITLE);
 }
 
@@ -223,7 +220,6 @@ function beginRace() {
   hud.sector(sector);
   setEngineRampage(false); startEngine();        // safe no-op if audio isn't booted
   startWind(); windOn = true;                    // the broadband rush that reads as speed
-  resumeMusic();
 }
 
 function playAgain() { ensureAudio(); beginRace(); }
@@ -333,21 +329,19 @@ function pauseGame() {
   stopWind(); windOn = false;
   if (skidOn) { stopSkid(); skidOn = false; }
   if (heliSoundOn) { stopHeliSound(); heliSoundOn = false; }
-  pauseMusic();
   suspendAudio();
 }
 function resumeGame() {
   if (state !== STATE.PAUSED) return;
   setState(STATE.RACE);
-  resumeAudio(); startEngine(); startWind(); windOn = true; resumeMusic();
+  resumeAudio(); startEngine(); startWind(); windOn = true;
 }
 function togglePause() { if (state === STATE.RACE) pauseGame(); else if (state === STATE.PAUSED) resumeGame(); }
 function autoPause() {
   if (state === STATE.RACE) pauseGame();
-  else pauseMusic();
   suspendAudio();
 }
-function onForeground() { resumeAudio(); if (state !== STATE.PAUSED) resumeMusic(); }
+function onForeground() { resumeAudio(); }
 
 // ── UI + toolbar wiring ──
 ui.initUI({
@@ -365,18 +359,24 @@ ui.initUI({
 });
 
 function refreshComfortBtn() { if (comfortBtn) comfortBtn.textContent = "COMFORT: " + (isComfort() ? "ON" : "OFF"); }
-function refreshMusicBtn() { if (musicBtn) { musicBtn.textContent = "🎵"; musicBtn.style.opacity = isMuted() ? "0.4" : "1"; } }
-function refreshSfxBtn() { if (sfxBtn) { sfxBtn.textContent = "🔊"; sfxBtn.style.opacity = isSfxEnabled() ? "1" : "0.4"; } }
+// ONE sound switch. Engine, wind, effects and the helicopter all run through the
+// single SFX channel in audio.js, so this silences the whole game. It lives in
+// the toolbar, which sits above every menu, so it works from the title screen
+// as well as mid-race — and it says what it is, rather than a dimmed emoji.
+function refreshSfxBtn() {
+  if (!sfxBtn) return;
+  const on = isSfxEnabled();
+  sfxBtn.textContent = on ? "🔊 SOUND: ON" : "🔇 SOUND: OFF";
+  sfxBtn.setAttribute("aria-pressed", on ? "true" : "false");
+}
 refreshComfortBtn();
-refreshMusicBtn();
 refreshSfxBtn();
 if (comfortBtn) comfortBtn.addEventListener("click", () => { toggleComfort(); refreshComfortBtn(); });
-if (musicBtn) musicBtn.addEventListener("click", () => { toggleMute(); refreshMusicBtn(); });
 if (sfxBtn) sfxBtn.addEventListener("click", () => { initAudio(); resumeAudio(); toggleSfx(); refreshSfxBtn(); });
 if (pauseBtn) pauseBtn.addEventListener("click", () => togglePause());
 
-// Boot audio (music bed + procedural engine/SFX) on the first user gesture.
-const kickAudio = () => { initAudio(); resumeAudio(); startOnce(); if (state === STATE.RACE) startEngine(); };
+// Boot audio (procedural engine + SFX) on the first user gesture.
+const kickAudio = () => { initAudio(); resumeAudio(); if (state === STATE.RACE) startEngine(); };
 window.addEventListener("pointerdown", kickAudio, { once: true });
 window.addEventListener("keydown", kickAudio, { once: true });
 

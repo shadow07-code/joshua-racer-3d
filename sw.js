@@ -1,8 +1,8 @@
 // Joshua Racer 3D — service worker.
 // Network-first for the app shell (HTML/JS/manifest) so deploys roll out live;
-// cache-first for heavy static assets (vendored Three.js, music, icons). Falls
+// cache-first for heavy static assets (vendored Three.js, icons). Falls
 // back to cache when offline so the installed PWA still launches.
-const VERSION = "jr3d-v28";
+const VERSION = "jr3d-v29";
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,12 +10,10 @@ const ASSETS = [
   "./icons/icon.svg",
   "./icons/icon-maskable.svg",
   "./vendor/three.module.js",
-  "./assets/audio/redline_at_midnight.mp3",
   "./src/main.js",
   "./src/config.js",
   "./src/input.js",
   "./src/comfort.js",
-  "./src/music.js",
   "./src/audio.js",
   "./src/pwa.js",
   "./src/scoring.js",
@@ -115,7 +113,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets (icons, music, fonts) — cache-first for speed/offline.
+  // Static assets (icons, fonts) — cache-first for speed/offline.
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;

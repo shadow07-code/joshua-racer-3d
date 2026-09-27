@@ -1,7 +1,8 @@
 // Procedural Web Audio — F1 rumble-to-wail engine + all SFX + helicopter rotor.
 // PORTED from the 2D reference src/audio.js (the synth voices are kept ~verbatim).
-// The dual chiptune MUSIC tracks are dropped — the supplied MP3 (music.js) is the
-// music bed now. Everything here routes through one SFX channel (one toggle).
+// There is NO music (the MP3 bed was removed at the owner's request, 2026-09-27).
+// Everything here routes through one SFX channel, so the one SOUND toggle in the
+// toolbar silences the whole game.
 import { gearAt } from "./gearbox.js";
 
 const A4 = 440;
@@ -14,12 +15,15 @@ function noteHz(name, octave) {
 }
 
 let ctx = null, masterGain = null, sfxGain = null, inited = false;
-let sfxEnabled = true;
 const SFX_KEY = "jr3d.sfx";
 const sfxVol = 0.9;
 
 function loadSfx() { try { const v = localStorage.getItem(SFX_KEY); return v === null ? true : v === "1"; } catch { return true; } }
 function saveSfx(on) { try { localStorage.setItem(SFX_KEY, on ? "1" : "0"); } catch {} }
+// Read the saved choice NOW, not on the first tap: the SOUND button is drawn at
+// boot, and it used to say ON for a player who had switched sound off until
+// they touched the screen.
+let sfxEnabled = loadSfx();
 
 export function initAudio() {
   if (inited) return;
@@ -28,7 +32,6 @@ export function initAudio() {
     if (!AC) return;
     ctx = new AC();
     masterGain = ctx.createGain(); masterGain.gain.value = 0.6; masterGain.connect(ctx.destination);
-    sfxEnabled = loadSfx();
     sfxGain = ctx.createGain(); sfxGain.gain.value = sfxEnabled ? sfxVol : 0; sfxGain.connect(masterGain);
     inited = true;
   } catch {}

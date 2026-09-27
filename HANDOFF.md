@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v28` — **bump on every code change** |
+| **Service worker** | `jr3d-v29` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -299,6 +299,11 @@ fired four seconds into every run for doing nothing.
 
 ## 2. Direction & locked decisions (these OVERRIDE the brief)
 
+- **No music.** The owner had the MP3 bed removed on 2026-09-27. Sound is the
+  procedural engine + effects only, behind one SOUND: ON/OFF toolbar button that
+  must stay reachable from the title screen and during a race. **When testing in
+  a browser, keep the sound OFF** (set `localStorage["jr3d.sfx"] = "0"` before the
+  page loads, and never call the sfx voices directly).
 - **Controls are STEER, nothing else.** The owner removed the brake and NOS on
   2026-09-25 ("let's keep it simple") and the dash on 2026-09-26. Do not add any
   button, held input or gesture back without asking — all three were tried and
@@ -344,7 +349,6 @@ along the tangent with a locked horizon — the **car model** banks, never the c
 ```
 index.html            WebGL canvas + ALL DOM overlays/HUD + CSS + import map (three, three/addons/)
 vendor/three.module.js   Three.js r0.160 (vendored)  ·  vendor/jsm/  bloom addons + RoundedBox
-assets/audio/redline_at_midnight.mp3                 music bed (owner-supplied)
 manifest.webmanifest · sw.js (jr3d-v16) · icons/*.svg · vercel.json (cleanUrls + cache headers)
 api/leaderboard.js    zero-dep Vercel serverless leaderboard (Upstash Redis REST)
 .claude/launch.json   preview-server config
@@ -355,7 +359,6 @@ src/
   juice.js        hitstop / slow-mo / camera-shake trauma model (all Comfort-Mode aware)
   input.js        keyboard + touch + on-screen steer pads (+ clearSteer)
   audio.js        procedural Web Audio: gearbox engine + SFX + heli rotor (one channel + toggle)
-  music.js        MP3 music bed (loop, mute, pause/resume)
   heat.js         THE CORE LOOP — one resource: speed + score + life + density
   stages.js       SECTORS — the named, distance-gated chapters a run moves through
   rank.js         lifetime XP → 12 ranks (persistent; deliberately not a power-up)
@@ -433,7 +436,8 @@ updateTraffic (onPassed/onNearMiss callbacks) → rampage timer/shockwave → up
 - **Threats:** police helicopter (sortie AI, drops flaming barrels above 150 km/h, single→dual) +
   compounding density scaling + a ±18% **density wave** (surge → breather → surge).
 - **Juice:** hitstop, slow-mo, camera shake, floating score/milestone popups, speed + combo callouts.
-- **Audio:** procedural gearbox engine, full SFX set, heli rotor, MP3 music bed, 🎵/🔊 toggles.
+- **Audio:** procedural gearbox engine, full SFX set, heli rotor, one **SOUND: ON/OFF** toggle
+  (toolbar, works on the title screen and mid-race). **No music** — removed 2026-09-27 (owner).
 - **Environments:** coastal causeway ↔ tunnels ↔ a **suspension BRIDGE** (deck + parapets, pylon
   towers with neon strips, parabolic main cables with hangers), zone-cycled. Bloom. The causeway
   *sinks* under the sea plane at a bridge mouth rather than narrowing, so the transition reads as a
@@ -636,6 +640,11 @@ that a ramp triggers exactly once and only in its own lane.
   `blur`/`pagehide`/`visibilitychange` blockers) in a `<script>` ahead of the
   import map, open that, and **delete it before deploying**. Step in chunks of
   ≤300 frames per call; bigger calls time out.
+
+- **The SOUND button is drawn at boot, before any gesture**, but `initAudio()`
+  only runs on the first tap. So `audio.js` reads the saved `jr3d.sfx` at module
+  load; when it only read it inside `initAudio()`, the button said ON to a player
+  who had switched sound off, right up until they touched the screen.
 
 - **Anything that feeds heat during OVERDRIVE makes it permanent for a good
   player.** Its drain (0.16/s) is less than a skilled shave rate pays, so when
