@@ -137,12 +137,17 @@ export function sfxNearMiss() {
     o.connect(g); g.connect(sfxGain); o.start(t + i * 0.05); o.stop(t + i * 0.05 + 0.14);
   });
 }
-// Coin pickup — a bright two-note ting (B5 → E6).
-export function sfxCoin() {
+// Coin pickup — a bright two-note ting (B5 → E6). `step` is the coin's place in
+// the trail it belongs to: each one rings a chord-tone higher (root, third,
+// fifth, octave), so running a whole trail plays a little fanfare and missing
+// one is audible as a note that never came.
+const COIN_STEPS = [0, 4, 7, 12];
+export function sfxCoin(step = 0) {
   if (!ctx) return;
   const t = ctx.currentTime;
+  const up = Math.pow(2, COIN_STEPS[Math.max(0, Math.min(COIN_STEPS.length - 1, step))] / 12);
   [988, 1319].forEach((f, i) => {
-    const o = ctx.createOscillator(); o.type = "triangle"; o.frequency.value = f;
+    const o = ctx.createOscillator(); o.type = "triangle"; o.frequency.value = f * up;
     const g = ctx.createGain(); g.gain.value = 0;
     g.gain.linearRampToValueAtTime(0.12, t + i * 0.055 + 0.004);
     g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.055 + 0.13);
@@ -163,6 +168,74 @@ export function sfxCombo(level) {
   g2.gain.linearRampToValueAtTime(0.07, t + 0.01); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.10);
   o2.connect(g2); g2.connect(sfxGain); o2.start(t); o2.stop(t + 0.12);
 }
+// THE CHAIN SINGS. Every link rings one step further up a G major pentatonic
+// scale, so a streak you keep alive turns into a melody climbing under your
+// driving, and a broken one drops straight back to the bottom note. You can hear
+// the chain without ever looking at the counter — the Peggle trick, and the
+// single cheapest way to make a run of shaves feel like it is BUILDING toward
+// something. A soft sine pluck under the whoosh, so it sparkles rather than
+// competes; the milestone links keep their own louder blip (sfxCombo).
+const LINK_SCALE = [0, 2, 4, 7, 9];
+export function sfxLink(chain) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const step = Math.max(0, Math.min(11, chain - 1));
+  const semis = 12 * Math.floor(step / LINK_SCALE.length) + LINK_SCALE[step % LINK_SCALE.length];
+  const f = noteHz("G", 4) * Math.pow(2, semis / 12);
+  [[f, 0.085, 0.26], [f * 2, 0.022, 0.14]].forEach(([hz, vol, len]) => {
+    const o = ctx.createOscillator(); o.type = "sine"; o.frequency.value = hz;
+    const g = ctx.createGain(); g.gain.value = 0;
+    g.gain.linearRampToValueAtTime(vol, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + len + 0.02);
+  });
+}
+
+// CLUTCH — you were on the flameout clock and clawed your way off it. A quick
+// rising major arpeggio that lands on a held chord: relief, as a sound.
+export function sfxClutch() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  [["C", 5, 0], ["E", 5, 0.06], ["G", 5, 0.12], ["C", 6, 0.18]].forEach(([n, oc, off], i) => {
+    const last = i === 3;
+    const o = ctx.createOscillator(); o.type = "triangle"; o.frequency.value = noteHz(n, oc);
+    const g = ctx.createGain(); g.gain.value = 0;
+    g.gain.linearRampToValueAtTime(last ? 0.16 : 0.12, t + off + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t + off + (last ? 0.55 : 0.16));
+    o.connect(g); g.connect(sfxGain); o.start(t + off); o.stop(t + off + (last ? 0.6 : 0.2));
+  });
+  [["E", 6], ["G", 6]].forEach(([n, oc]) => {     // the chord the last note lands in
+    const o = ctx.createOscillator(); o.type = "sine"; o.frequency.value = noteHz(n, oc);
+    const g = ctx.createGain(); g.gain.value = 0;
+    g.gain.linearRampToValueAtTime(0.05, t + 0.19);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    o.connect(g); g.connect(sfxGain); o.start(t + 0.18); o.stop(t + 0.72);
+  });
+}
+
+// An indignant double-honk from the car you just shaved — behind you and falling
+// away, so it is filtered and drops a touch in pitch. Big vehicles sound big.
+const HONK_HZ = { bus: 196, truck: 220, suv: 311, sedan: 370, taxi: 415 };
+export function sfxHonk(shape) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const base = HONK_HZ[shape] || 370;
+  const filt = ctx.createBiquadFilter(); filt.type = "lowpass"; filt.frequency.value = 1900;
+  filt.connect(sfxGain);
+  [[0, 0.09], [0.14, 0.2]].forEach(([off, len]) => {
+    [1, 1.26].forEach((mul) => {                  // a major-third pair, like a real horn
+      const o = ctx.createOscillator(); o.type = "sawtooth";
+      o.frequency.setValueAtTime(base * mul, t + off);
+      o.frequency.linearRampToValueAtTime(base * mul * 0.96, t + off + len);
+      const g = ctx.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.045, t + off + 0.01);
+      g.gain.setValueAtTime(0.045, t + off + len - 0.03);
+      g.gain.exponentialRampToValueAtTime(0.001, t + off + len);
+      o.connect(g); g.connect(filt); o.start(t + off); o.stop(t + off + len + 0.02);
+    });
+  });
+}
+
 export function sfxBump() {
   if (!ctx) return;
   const t = ctx.currentTime;

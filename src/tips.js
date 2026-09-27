@@ -43,4 +43,5 @@ export const TIPS = {
   drift:    "SLIDE — commit to the cut and the drift scores",
   chain:    "CHAIN — keep taking risks, a crash resets it",
   oncoming: "LEFT LANE IS TWO-WAY — head-on shaves pay double",
+  overdrive:"OVERDRIVE — you can't be hurt. Ram cars to keep it going",
 };

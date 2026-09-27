@@ -57,8 +57,10 @@ export function addHeat(h, amount) {
 
 // Per-frame decay, overdrive state machine, and the flameout countdown.
 // `events` out-param reports edges the caller needs to react to (audio, banners)
-// without this module knowing anything about them.
-export function updateHeat(h, dt, events) {
+// without this module knowing anything about them. `floor` is the current
+// sector's minimum (COAST RUN's warm-up, src/stages.js) — the bar never drains
+// below it, so the flameout clock cannot start there.
+export function updateHeat(h, dt, events, floor = 0) {
   if (h.dead) return;
 
   // Overdrive burns heat at a flat, brutal rate instead of the normal curve —
@@ -74,6 +76,7 @@ export function updateHeat(h, dt, events) {
     // Hotter burns faster, so the top of the bar is a place you visit, not live.
     const drain = HEAT.drainBase + HEAT.drainScale * h.v;
     h.v = clamp01(h.v - drain * dt);
+    if (h.v < floor) h.v = floor;
     if (h.v >= HEAT.overdriveAt) {
       h.overdrive = true;
       if (events) events.overdriveStart = true;

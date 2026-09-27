@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v22` — **bump on every code change** |
+| **Service worker** | `jr3d-v28` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -200,6 +200,42 @@ went 35 → 6-9. Drain was softened (`drainBase` 0.045 → 0.040, `drainScale` 0
 → 0.058) to match the thinner road, and harness section P (**COLD RECOVERY**) now
 proves a starving player can still reach enough traffic to climb out.
 
+### Then: the SMILE pass — five refinements, no new controls (2026-09-27)
+
+The owner asked for fine refinements that make the game more fun, within the
+steer-only rule. Every one of these was measured first — the NOVICE and EXPERT
+bots and section **Q** of `tools/heattest.mjs` were written for exactly this:
+
+1. **COAST RUN is a real warm-up** (`floor: 0.22` on sector 1 in `stages.js`,
+   applied by `updateHeat(h, dt, events, floor)`). A first-time player drives
+   the way every other racer taught them — dodge — and it hit the FLAMEOUT
+   siren at 6s and was dead at 10s, half-way through the opening sector. The
+   NOVICE bot reached sector 2 in **0/7** worlds; it now does in **7/7** and lives
+   ~30s. A player already taking risks never touches the floor.
+2. **OVERDRIVE is a burst, and it comes back.** Only SMASHES feed it now (main.js
+   skips shave and slipstream heat while it is on), and it triggers at 95%
+   instead of 98.5%. When everything fed it, the EXPERT went invincible once and
+   stayed that way for 70–155 of 180 seconds — the best moment in the game had
+   become a god mode. Now: 1–6 entries a run, ~3s each, 11% of the run.
+   For those few seconds the traffic you have dodged all run is bowling pins;
+   a one-time tip says so.
+3. **The chain SINGS** (`sfxLink`). Every link rings one step up a G major
+   pentatonic scale, so a streak becomes a rising melody and a broken one drops
+   back to the bottom note. Coins in a trail climb a chord (`sfxCoin(step)`).
+4. **CLUTCH SAVE.** Clawing off the flameout clock after 1.5s+ of siren
+   (`HEAT.clutchAfter`) gets a banner, +1,000, an arpeggio, a beat of slow-mo
+   and a rumble — about twice a run for the bots. It also fixed a bug: the
+   FLAMEOUT banner used to stay up for its full four seconds after you escaped.
+5. **The traffic notices you.** A car shaved at ≥0.35 tightness FLINCHES — the
+   driver lifts (brake lamps flare) and jinks ~5 units away, nose first
+   (`FLINCH_*` in traffic.js, the yaw in vehicles.js) — and PERFECT shaves get
+   an indignant double-honk, pitched by vehicle size (`sfxHonk`, rate-limited).
+   Deterministic and always away from you, so it cannot close the road ahead:
+   density's worst case is still 2.79.
+
+Also: the **120 KM/H! callout is gone** — that is the cold speed floor, so it
+fired four seconds into every run for doing nothing.
+
 ---
 
 ## 1. Open items (start here)
@@ -246,7 +282,9 @@ proves a starving player can still reach enough traffic to climb out.
      minutes. That bot crashes 42 times in that window, so it is a floor, not a ceiling — but
      nobody has measured what a human who actually slingshots scores. Do not touch `GRADES` until
      someone has.
-   - **An expert BOT.** Section E's policies are stateless one-liners and cannot execute the
+   - **An expert BOT — partly done.** The EXPERT policy (2026-09-27) looks before it swerves and
+     survives, which is what section Q needed to measure OVERDRIVE. It still cannot time a slingshot.
+     Section E's original policies are stateless one-liners and cannot execute the
      three-phase slingshot, so the harness measures the *economy* (safe dies, parking is worthless)
      and section O measures the *mechanic* in isolation. A stateful bot that strings slingshots
      together would let the two be compared directly, which is the one balance question still open.
@@ -463,6 +501,10 @@ Everything numeric lives in **`src/config.js`**.
 | Hill size | `CURVE.elevAmp1/2` | 9 / 6 → road spans y 0–30 |
 | Hill length | `CURVE.elevFreq1/2` | ~1100 / ~2600-unit wavelengths |
 | Camera roll | `CAMERA.roll` | 0.055 rad (~3°); Comfort Mode sets 0 |
+| Warm-up | `floor` on COAST RUN in `stages.js` | 0.22 — heat cannot drain below it in sector 1 |
+| Overdrive trigger / length | `HEAT.overdriveAt` / `overdriveDrain` / `smash` | 0.95 / 0.16/s / +0.05 per car — **only smashes feed it** |
+| Clutch save | `HEAT.clutchAfter` / `clutchScore` | 1.5s of siren / +1,000 |
+| Traffic flinch | `FLINCH_TIGHT` / `FLINCH_VX` / `FLINCH_T` in `entities/traffic.js` | 0.35 / 24 / 0.4s |
 | Smoke/spark density | `render3d/particles.js` emitter rates | smoke `16 + 40×intensity`/s, sparks 90/s |
 
 ### Density dials — **run `node tools/densitytest.mjs` after touching ANY of these**
@@ -588,6 +630,17 @@ that a ramp triggers exactly once and only in its own lane.
   and call the stored callback in a loop — the pattern is in this session's
   transcript. Note that screenshots can lag the JS state by a frame or two, so
   read the DOM for truth and use the picture for looks.
+  **If the pane is hidden the stub is too late** — the pending frame was queued
+  with the REAL rAF and never fires, so the stub never captures anything. Copy
+  `index.html` to an untracked `_debug.html` with the stub (plus capture-phase
+  `blur`/`pagehide`/`visibilitychange` blockers) in a `<script>` ahead of the
+  import map, open that, and **delete it before deploying**. Step in chunks of
+  ≤300 frames per call; bigger calls time out.
+
+- **Anything that feeds heat during OVERDRIVE makes it permanent for a good
+  player.** Its drain (0.16/s) is less than a skilled shave rate pays, so when
+  shaves counted, overdrive never ended. Only smashes feed it now; if you add a
+  new heat source, gate it on `!heat.overdrive` too, and check harness section Q.
 
 - **`localhost:8080` is hijacked.** Another local project ("Just A Scanner") has a service worker and
   sometimes a server on :8080; it will serve *the wrong app* and waste a lot of time. **Use 8099.**

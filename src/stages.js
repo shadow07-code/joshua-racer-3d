@@ -18,14 +18,24 @@
 //   oncoming  is the opposing carriageway live
 //   cops      is the police helicopter allowed to sortie
 //   density   multiplier applied ON TOP of the heat-driven density
+//   floor     heat cannot drain below this — COAST RUN only, see below
 // DENSITY IS A GARNISH HERE, NOT THE ESCALATION. It multiplies on top of the
 // heat-driven figure, so the two compound — and a sector table that ran to 1.70
 // meant the late game was tightening the road at the exact moment the player was
 // hottest and therefore already had it tightened. What actually escalates a
 // sector is its RULES: the lights go out, the left lane turns two-way, the
 // helicopter shows up. Those make it harder without making it undriveable.
+//
+// COAST RUN IS A REAL WARM-UP. Heat starts at 34% and drains from the first
+// frame, so a first-time player who drives the way every other racing game has
+// taught them — dodge the cars — hit the FLAMEOUT siren at six seconds and was
+// dead at ten, half-way through the opening sector. In the harness a dodging
+// NOVICE bot reached sector 2 in 0 of 7 worlds. The floor means nobody can burn
+// out before RUSH HOUR: the novice now reaches it every time, lives ~35s, and
+// has been shaving cars (and hearing them pay) for fifteen seconds before the
+// clock can bite. A player who is already taking risks never touches the floor.
 const SECTORS = [
-  { z: 0,     name: "COAST RUN",  sub: "warm up",              night: 0.00, oncoming: false, cops: false, density: 1.00 },
+  { z: 0,     name: "COAST RUN",  sub: "warm up",              night: 0.00, oncoming: false, cops: false, density: 1.00, floor: 0.22 },
   { z: 1200,  name: "RUSH HOUR",  sub: "the road fills up",    night: 0.10, oncoming: false, cops: false, density: 1.05 },
   { z: 3000,  name: "NIGHTFALL",  sub: "lights on",            night: 0.55, oncoming: false, cops: false, density: 1.09 },
   { z: 5200,  name: "WRONG WAY",  sub: "left lane goes two-way", night: 0.75, oncoming: true, cops: false, density: 1.12 },
@@ -68,6 +78,7 @@ export function sectorAt(index) {
     oncoming: true,
     cops: true,
     density: Math.min(ENDLESS_DENSITY_MAX, last.density + over * ENDLESS_DENSITY_STEP),
+    floor: 0,
     endless: true,
     z: last.z + over * ENDLESS_EVERY,
   };

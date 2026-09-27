@@ -201,8 +201,7 @@ export function prepopulateTraffic(sys, distance = 600) {
   while (sys.nextRowZ < distance) spawnRow(sys);
 }
 
-function driftBlocked(cars, c) {
-  const dir = c.driftVx > 0 ? 1 : -1;
+function driftBlocked(cars, c, dir = c.driftVx > 0 ? 1 : -1) {
   const cHx = skinHalfX(c.skin), cHz = skinHalfZ(c.skin);
   for (const o of cars) {
     if (o === c || o.smashed) continue;
@@ -221,6 +220,20 @@ export function smashCar(c, fromX = 0) {
   c.vx = dir * (140 + Math.random() * 70);
   c.vz = -(20 + Math.random() * 25);
 }
+
+// THE TRAFFIC NOTICES YOU. A car you shave tight flinches: the driver lifts
+// (its brake lamps flare — vehicles.js lights them whenever a car is under its
+// cruise speed) and jinks half a lane away from you, nose first. Until now a
+// civilian took a pixel-close pass with total indifference, which made the best
+// move in the game feel like it happened to nobody. It only ever moves a car you
+// are already alongside or past, and always AWAY from you, so it can never close
+// the road ahead. Deterministic on purpose: no Math.random, so the seeded
+// harness worlds play out exactly as they did.
+const FLINCH_TIGHT = 0.35;     // how close a shave has to be to rattle the driver
+const FLINCH_T = 0.4;          // seconds the swerve lasts
+const FLINCH_VX = 24;          // peak lateral speed of it (~5 units in total)
+const FLINCH_LIFT = 0.92;      // the driver comes off the throttle
+export { FLINCH_T };
 
 export function updateTraffic(sys, dt, playerZ, cbs, clearAheadDist = 0) {
   const ahead = playerZ + 220;
@@ -243,6 +256,15 @@ export function updateTraffic(sys, dt, playerZ, cbs, clearAheadDist = 0) {
   for (const c of sys.list) {
     if (c.smashed) { c.x += c.vx * dt; c.z += c.vz * dt; continue; }
     c.z += c.speed * dt;               // negative speed = opposing traffic
+
+    if (c.flinchT > 0) {
+      c.flinchT = Math.max(0, c.flinchT - dt);
+      const lim = halfRoad - 6;
+      const lo = (!c.oncoming && sys.oncomingOn) ? WITH_FLOW_MIN_X : -lim;
+      if (!driftBlocked(sys.list, c, c.flinchDir)) {
+        c.x = Math.max(lo, Math.min(lim, c.x + c.flinchDir * FLINCH_VX * (c.flinchT / FLINCH_T) * dt));
+      }
+    }
 
     if (!c.oncoming) {
       if (c.signalT > 0) {
@@ -272,6 +294,11 @@ export function updateTraffic(sys, dt, playerZ, cbs, clearAheadDist = 0) {
         // Edge-to-edge lateral clearance → tightness 0..1 (1 = a pixel-close shave).
         const clearance = Math.max(0, dx - (skinHalfX(c.skin) + PHYS.carHalfWidth));
         const tightness = Math.max(0, 1 - clearance / SCORE.precisionPx);
+        if (tightness >= FLINCH_TIGHT) {
+          c.flinchT = FLINCH_T;
+          c.flinchDir = c.x >= (cbs?.playerX ?? 0) ? 1 : -1;
+          if (!c.oncoming) c.speed *= FLINCH_LIFT;
+        }
         cbs?.onNearMiss?.(tightness, c);
       }
     }

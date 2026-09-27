@@ -271,11 +271,28 @@ export const HEAT = {
   // slipstream frame happens constantly, so the fire could never actually kill
   // you. The emergency has to be escaped on purpose, not survived by accident.
   flameoutClear: 0.04,
+  // CLUTCH. Clawing back out of a flameout after the siren has been going this
+  // long is the most desperate moment in a run, and it used to end in silence —
+  // worse, the FLAMEOUT banner stayed up for its full four seconds after you had
+  // already escaped it. Now it is celebrated. 1.5s keeps it special: the harness
+  // bots earn about two a run; a quick dip under the line earns nothing.
+  clutchAfter: 1.5,
+  clutchScore: 1000,
 
   // Overdrive — the old rampage, now earned continuously off the top of the bar.
-  overdriveAt: 0.985,
+  // It is a BURST, and only SMASHES feed it (main.js skips shave and slipstream
+  // heat while it is on). It used to be fed by everything, and a skilled player
+  // out-earned its drain on shaves alone: the harness EXPERT went invincible once
+  // and stayed that way for 70–155 seconds of a 180-second run. The best moment
+  // in the game had become a god mode. Now it lasts a few seconds unless you go
+  // hunting for cars to ram — for a moment the traffic you have been dodging all
+  // run is bowling pins — and it comes back around several times a run instead.
+  // The trigger sits at 95% rather than 98.5% so a good streak actually reaches
+  // it: the bar reads as full, and the drain near the top was making the last
+  // few percent a wall.
+  overdriveAt: 0.95,
   overdriveExit: 0.55,
-  overdriveDrain: 0.16,    // ~2.7s from full unless you keep smashing
+  overdriveDrain: 0.16,    // ~2.5s from the trigger unless you keep smashing
   overdriveSpeedMul: 1.10,
   overdriveScoreBonus: 2,
 

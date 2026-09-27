@@ -20,6 +20,7 @@ import {
   sfxNearMiss, sfxCombo, sfxBump, sfxCrash, sfxRampage, sfxShockwave, sfxBarrelDrop, sfxGameOver, sfxCoin, sfxShift,
   sfxNitro, sfxHorn, sfxLaunch, sfxLand, sfxAlert,
   startSkid, stopSkid, setSkidLevel, sfxWhoosh, startWind, setWind, stopWind,
+  sfxLink, sfxClutch, sfxHonk,
   startHeliSound, stopHeliSound, isSfxEnabled, toggleSfx,
 } from "./audio.js";
 import { makePlayer, updatePlayer, playerBox, applyCollisionLoss, launchPlayer, cancelDrift } from "./entities/player.js";
@@ -92,6 +93,10 @@ let driftTime = 0, bestDrift = 0, skidOn = false, windOn = false;
 let draftCar = null, draftHeldFor = 0, draftSince = 1e9;
 let slingshots = 0;
 let smokeAcc = 0, sparkAcc = 0;
+// Coin trails ring up a chord (audio.js sfxCoin) — which note is next, and when
+// the last coin was, so a new trail starts back at the root.
+let coinStep = 0, lastCoinT = -1e9;
+let lastHonkT = -1e9;                 // honks are rate-limited, or a streak is a traffic jam
 
 // ── Game state + scoring ──
 const STATE = {
@@ -114,8 +119,10 @@ let nightT = 0;
 let rampageMsg = "", rampageMsgTimer = 0;
 let heliSoundOn = false;
 
-// Juice: milestone callouts + camera shake.
-const SPEED_MILESTONES = [120, 150, 180, 200];
+// Juice: milestone callouts + camera shake. No 120: that is the cold speed
+// floor, so it fired four seconds into every run for doing nothing at all — a
+// reward nobody earned makes the ones they did earn count for less.
+const SPEED_MILESTONES = [150, 180, 200];
 let speedMsIdx = 0;             // next speed milestone to fire
 const chainMsHit = new Set();   // chain milestones already celebrated this run
 const _shake = { x: 0, y: 0 };
@@ -168,6 +175,7 @@ function resetWorld() {
   driftTime = 0; bestDrift = 0;
   draftCar = null; draftHeldFor = 0; draftSince = 1e9;
   slingshots = 0; smokeAcc = 0; sparkAcc = 0;
+  coinStep = 0; lastCoinT = -1e9; lastHonkT = -1e9;
   particles.clear();
   if (skidOn) { stopSkid(); skidOn = false; }
   traffic.list.length = 0; traffic.coins.length = 0; traffic.nextRowZ = 80; traffic.lastGapLane = 2;
@@ -249,18 +257,20 @@ function linkChain(quiet) {
   chain += 1;
   chainBest = Math.max(chainBest, chain);
   chainTimer = CHAIN.window;
-  if (!quiet && CHAIN.milestones.includes(chain) && !chainMsHit.has(chain)) {
+  if (quiet) return;
+  if (CHAIN.milestones.includes(chain) && !chainMsHit.has(chain)) {
     chainMsHit.add(chain);
     hud.popup("CHAIN ×" + chain, "combo", chain >= 30);
     juice.addShake(0.18);
     sfxCombo(Math.min(12, chain));
+  } else {
+    sfxLink(chain);                               // the chain SINGS — see audio.js
   }
 }
 
 function registerSmash() {
-  linkChain();
+  linkChain();                                    // ...which rings the next note
   score.score += SCORE.smashBonus * chain;
-  sfxCombo(Math.min(12, chain));
   juice.hitStop(0.035); juice.addShake(0.14); juice.rumble(35);
   emitImpact(0.7);
   hud.popup("SMASH ×" + chain, "smash");
@@ -501,6 +511,9 @@ function stepAttract(dt) {
 
 function stepRace(dt) {
   const input = getInput();
+  // Where the flameout clock stood coming into this frame. Anything below that
+  // can put the fire out (addHeat resets it), so this is how CLUTCH knows.
+  const flameBefore = heat.flameout;
 
   updatePlayer(player, dt, input, {
     onFenceBump: sfxBump,
@@ -579,10 +592,20 @@ function stepRace(dt) {
       // A band of noise sweeping DOWN in pitch is what a pass-by actually sounds
       // like, and that Doppler drop is most of why a near miss feels near.
       sfxWhoosh(tightness);
+      // ...and the car you shaved lets you know about it (it also flinches —
+      // traffic.js). Only on the properly close ones, and never in a pile-up.
+      if (!headOn && tightness >= 0.7 && raceTime - lastHonkT > 1.2) {
+        sfxHonk(car2 && car2.skin.shape);
+        lastHonkT = raceTime;
+      }
       // FUEL. A shave is the main way heat goes back in — tighter pays more, and
       // a head-on shave in the opposing lane is the richest source in the game.
-      addHeat(heat, (HEAT.nearMiss + HEAT.nearMissTight * tightness)
-        * (headOn ? HEAT.oncomingMul : 1) * (slung ? SLINGSHOT.heatMul : 1) * chainMul());
+      // Not in OVERDRIVE, which only smashes feed (see HEAT.overdriveAt): shaves
+      // paying into it are what made it last forever for a good player.
+      if (!heat.overdrive) {
+        addHeat(heat, (HEAT.nearMiss + HEAT.nearMissTight * tightness)
+          * (headOn ? HEAT.oncomingMul : 1) * (slung ? SLINGSHOT.heatMul : 1) * chainMul());
+      }
       linkChain();
       // A tight shave rewards skill: a micro-freeze that punctuates the moment,
       // and a PERFECT! callout on the closest ones.
@@ -655,7 +678,10 @@ function stepRace(dt) {
     coinsCollected += gotCoins;
     score.score += gotCoins * SCORE.coinValue;
     addHeat(heat, HEAT.coin * gotCoins);
-    sfxCoin();
+    // Coins in one trail are well under a second apart; a longer gap is a new one.
+    if (raceTime - lastCoinT > 0.8) coinStep = 0;
+    sfxCoin(coinStep);
+    coinStep += gotCoins; lastCoinT = raceTime;
   }
 
   // NITRO canisters are HEAT pickups — a big instant slug of the only resource
@@ -684,7 +710,8 @@ function stepRace(dt) {
     draftCar = draft.car;
     // You always out-run the car in front, so a tow ends on its own — the move is
     // to hold your nerve on the bumper and swerve out as late as you dare.
-    addHeat(heat, HEAT.draftRate * draft.closeness * dt);
+    // (Not in OVERDRIVE — only smashes feed that.)
+    if (!heat.overdrive) addHeat(heat, HEAT.draftRate * draft.closeness * dt);
   } else if (draftStreak > 0) {
     // A slipstream only LINKS if you actually held it — leaning on someone's
     // bumper for a moment is the risk; brushing past them is not.
@@ -723,13 +750,14 @@ function stepRace(dt) {
   else if (chain >= 5 && tipOnce("chain")) hud.tip(TIPS.chain);
 
   const hev = {};
-  updateHeat(heat, dt, hev);
+  updateHeat(heat, dt, hev, sector.floor || 0);   // COAST RUN cannot burn you out
   if (hev.overdriveStart) {
     player.rampage = 1;                            // the car model reads this for its aura
     rampageMsg = "OVERDRIVE!"; rampageMsgTimer = 1.6;
     sfxRampage(); setEngineRampage(true);
     juice.slowMo(0.3, 0.45); juice.addShake(0.5); juice.rumble([60, 50, 60, 50, 120]);
     hud.popup("OVERDRIVE!", "milestone", true);
+    if (tipOnce("overdrive")) hud.tip(TIPS.overdrive);
   }
   if (hev.overdriveEnd) {
     player.rampage = 0;
@@ -738,6 +766,20 @@ function stepRace(dt) {
     juice.addShake(0.35);
   }
   if (hev.flameoutStart) { rampageMsg = "FLAMEOUT — GET HEAT!"; rampageMsgTimer = HEAT.flameoutSeconds; sfxAlert(); }
+  // Off the clock. A real escape — the siren had been going a while — is the
+  // CLUTCH, and it gets the full treatment. Either way the FLAMEOUT banner goes:
+  // it used to sit there for its whole four seconds after you had got out.
+  if (flameBefore > 0 && heat.flameout === 0 && !heat.dead) {
+    if (flameBefore >= HEAT.clutchAfter) {
+      score.score += HEAT.clutchScore;
+      rampageMsg = "CLUTCH!"; rampageMsgTimer = 1.1;
+      hud.popup("CLUTCH SAVE +" + HEAT.clutchScore.toLocaleString(), "clutch", true);
+      sfxClutch();
+      juice.slowMo(0.22, 0.5); juice.addShake(0.2); juice.rumble([30, 30, 60]);
+    } else if (rampageMsgTimer > 0 && rampageMsg.startsWith("FLAMEOUT")) {
+      rampageMsgTimer = Math.min(rampageMsgTimer, 0.3);
+    }
+  }
   if (hev.tierTo > hev.tierFrom && hev.tierTo >= 2) {
     hud.popup(TIERS[hev.tierTo].name, "milestone", hev.tierTo === 3);
     juice.addShake(0.12);

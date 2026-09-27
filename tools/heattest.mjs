@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const imp = (p) => import(pathToFileURL(join(SRC, p)).href);
 
-const { PHYS, HEAT, ONCOMING, SCORE, CHAIN, SLINGSHOT } = await imp("config.js");
+const { PHYS, HEAT, ONCOMING, SCORE, CHAIN, SLINGSHOT, ROAD } = await imp("config.js");
 const ST = await imp("stages.js");
 const RK = await imp("rank.js");
 const H = await imp("heat.js");
@@ -122,7 +122,9 @@ function runBot(policy, seconds) {
   const chainMul = () => 1 + Math.min(chain, CHAIN.cap) * CHAIN.step;
   const link = () => { chain++; chainBest = Math.max(chainBest, chain); chainTimer = CHAIN.window; };
   let slings = 0, draftCar = null, draftHeldFor = 0, draftSince = 1e9;
+  let overdrives = 0, odTime = 0, smashes = 0, clutches = 0;
   while (t < seconds && !h.dead) {
+    const flameBefore = h.flameout;
     const steer = policy(sys, p, h);
     p.throttle01 = H.heatSpeed01(h);
     updatePlayer(p, DT, { steer }, {});
@@ -138,8 +140,11 @@ function runBot(policy, seconds) {
         const slung = !headOn && c && c === draftCar
           && draftHeldFor >= SLINGSHOT.minDraft && draftSince <= SLINGSHOT.window;
         if (slung) { slings++; draftCar = null; }
-        H.addHeat(h, (HEAT.nearMiss + HEAT.nearMissTight * tight)
-          * (headOn ? HEAT.oncomingMul : 1) * (slung ? SLINGSHOT.heatMul : 1) * chainMul());
+        // Mirrors main.js: in OVERDRIVE only smashes feed the bar.
+        if (!h.overdrive) {
+          H.addHeat(h, (HEAT.nearMiss + HEAT.nearMissTight * tight)
+            * (headOn ? HEAT.oncomingMul : 1) * (slung ? SLINGSHOT.heatMul : 1) * chainMul());
+        }
         link();
       },
     });
@@ -147,13 +152,20 @@ function runBot(policy, seconds) {
     const d = T.draftTarget(sys, p.x, p.z, p.y);
     if (d) {
       draftTime += DT; draftStreak += DT; draftCar = d.car;
-      H.addHeat(h, HEAT.draftRate * d.closeness * DT);
+      if (!h.overdrive) H.addHeat(h, HEAT.draftRate * d.closeness * DT);
     } else if (draftStreak > 0) {
       if (draftStreak > CHAIN.draftMin) link();
       draftHeldFor = draftStreak; draftSince = 0; draftStreak = 0;
     }
     if (chainTimer > 0) { chainTimer -= DT; if (chainTimer <= 0) chain = 0; }
-    if (!h.overdrive && p.invuln <= 0) {
+    if (h.overdrive) {
+      // Plough through: every car hit is smashed, links the chain and feeds the bar.
+      let hit, guard = 0;
+      while ((hit = T.checkTrafficHit(sys, playerBox(p), p.y)) && guard++ < 8) {
+        T.smashCar(hit, p.x); smashes++; link(); H.addHeat(h, HEAT.smash);
+      }
+      odTime += DT;
+    } else if (p.invuln <= 0) {
       const hit = T.checkTrafficHit(sys, playerBox(p), p.y);
       if (hit) {
         T.smashCar(hit, p.x);
@@ -165,14 +177,17 @@ function runBot(policy, seconds) {
       }
     }
     if (p.invuln > 0) p.invuln = Math.max(0, p.invuln - DT);
-    H.updateHeat(h, DT, {});
+    const ev = {};
+    H.updateHeat(h, DT, ev, sector.floor || 0);
+    if (ev.overdriveStart) overdrives++;
+    if (flameBefore >= HEAT.clutchAfter && h.flameout === 0 && !h.dead) clutches++;
     maxHeat = Math.max(maxHeat, h.v);
     score += Math.max(0, p.z - lastZ) * SCORE.distanceWeight * H.heatScoreMul(h);
     lastZ = p.z;
     t += DT;
   }
   return { t, h, score, crashes, nearMisses, draftTime, maxHeat, chainBest, sectorBest,
-           dist: p.z, slings };
+           dist: p.z, slings, overdrives, odTime, smashes, clutches };
 }
 
 // The coward: holds the middle lane, never goes near anything.
@@ -195,9 +210,64 @@ function racer(sys, p) {
 line(`   (median of ${SEEDS.length} seeded worlds — same worlds for every bot)`);
 line("   NOTE: these measure the ECONOMY, not technique — a 20-line stateless policy");
 line("   cannot execute a three-phase slingshot, so that is measured in section O.");
+// The NOVICE drives the way every other racing game has taught them to: dodge
+// whatever is in your lane. It never goes looking for a shave, which makes it the
+// honest model of somebody's FIRST run — see section Q.
+function novice(sys, p) {
+  let threat = null, best = Infinity;
+  for (const c of sys.list) {
+    if (c.smashed) continue;
+    const dz = c.z - p.z;
+    if (dz > 0 && dz < 90 && Math.abs(c.x - p.x) < 14 && dz < best) { best = dz; threat = c; }
+  }
+  if (!threat) return 0;
+  const lim = ROAD.halfWidth - 10;
+  if (p.x > lim) return -1;
+  if (p.x < -lim) return 1;
+  return threat.x >= p.x ? -1 : 1;
+}
+
+// The EXPERT plays the racer's line but LOOKS before it swerves: it breaks out to
+// whichever side of the car is actually clear, aims to pass ~16 units off its
+// centre (a shave, not a lane change), and never into the opposing lane. Still
+// stateless, still no slingshot timing — but it survives, which is what makes it
+// the first bot in this file that can say anything about the top of the bar.
+function expert(sys, p) {
+  let target = null, bestDz = Infinity;
+  for (const c of sys.list) {
+    if (c.smashed || c.oncoming) continue;
+    const dz = c.z - p.z;
+    if (dz > 5 && dz < 140 && dz < bestDz) { bestDz = dz; target = c; }
+  }
+  if (!target) return 0;
+  const lim = ROAD.halfWidth - 8;
+  const laneW = (ROAD.halfWidth * 2) / ROAD.laneCount;
+  const blocked = (x) => {
+    if (Math.abs(x) > lim) return true;
+    if (sys.oncomingOn && x < -ROAD.halfWidth + laneW + 2) return true;
+    for (const c of sys.list) {
+      if (c.smashed || c === target) continue;
+      const dz = c.z - p.z;
+      if (dz > -12 && dz < 60 && Math.abs(c.x - x) < 13) return true;
+    }
+    return false;
+  };
+  const dz = target.z - p.z, dx = target.x - p.x;
+  if (dz > 22) {
+    if (blocked(target.x)) return 0;
+    return Math.abs(dx) < 1.5 ? 0 : Math.sign(dx);
+  }
+  const L = target.x - 16, R = target.x + 16;
+  const side = !blocked(R) ? R : !blocked(L) ? L : (Math.abs(R) < Math.abs(L) ? R : L);
+  const e = side - p.x;
+  return Math.abs(e) < 1.5 ? 0 : Math.sign(e);
+}
+
 const BOTS = [
   ["COWARD (never risks)", coward],
+  ["NOVICE (dodges, 1st run)", novice],
   ["RACER (plays the line)", racer],
+  ["EXPERT (looks, then goes)", expert],
 ];
 for (const [name, pol] of BOTS) {
   const runs = SEEDS.map((sd) => { seedRandom(sd); const r = runBot(pol, 120); unseedRandom(); return r; });
@@ -211,7 +281,8 @@ for (const [name, pol] of BOTS) {
        `crashes ${median(runs.map((r) => r.crashes))}  peak ${(median(runs.map((r) => r.maxHeat)) * 100).toFixed(0)}%`);
   line(`   ${"".padEnd(25)} sector ${median(runs.map((r) => r.sectorBest))}, chain ${median(runs.map((r) => r.chainBest))}, ` +
        `${Math.round(median(runs.map((r) => r.dist))).toLocaleString()} m, ` +
-       `slingshots ${median(runs.map((r) => r.slings))}`);
+       `slingshots ${median(runs.map((r) => r.slings))}, overdrives ${median(runs.map((r) => r.overdrives))}, ` +
+       `clutch saves ${median(runs.map((r) => r.clutches))}`);
 }
 
 // ── F. Score calibration for the letter grades ───────────────────────────────
@@ -466,4 +537,24 @@ line("\nP. COLD RECOVERY — can a starving player reach enough traffic?");
     line(`   at ${(heat * 100).toFixed(0).padStart(3)}% heat: ${(income * 100).toFixed(1)}%/s in vs ${(drain * 100).toFixed(1)}%/s out ` +
          (income > drain ? "✔" : "— survives only by also towing"));
   }
+}
+
+// ── Q. THE SMILE CHECKS — first run, and the best moment in the game ─────────
+// Two things the rest of this file never asked. Does a FIRST-TIME player (the
+// NOVICE — dodges, never hunts a shave) survive long enough to learn anything?
+// It used to die at 10s, half-way through COAST RUN, in every world. And is
+// OVERDRIVE still a moment? When shaves fed it, the EXPERT went invincible once
+// and stayed that way for most of the run; it should be a burst that comes back.
+line("\nQ. FIRST RUN + OVERDRIVE");
+{
+  const nov = SEEDS.map((sd) => { seedRandom(sd); const r = runBot(novice, 180); unseedRandom(); return r; });
+  const reached = nov.filter((r) => r.sectorBest >= 2).length;
+  line(`   NOVICE reaches RUSH HOUR in ${reached}/${SEEDS.length} worlds, lives a median ` +
+       `${median(nov.map((r) => r.t)).toFixed(0)}s ` + (reached === SEEDS.length ? "✔ nobody burns out in the warm-up" : "!! the warm-up kills"));
+  const exp = SEEDS.map((sd) => { seedRandom(sd); const r = runBot(expert, 180); unseedRandom(); return r; });
+  const entries = exp.map((r) => r.overdrives);
+  const odShare = median(exp.map((r) => r.odTime / r.t));
+  const burst = median(exp.filter((r) => r.overdrives).map((r) => r.odTime / r.overdrives));
+  line(`   EXPERT overdrives per 180s: ${entries.join(", ")} — median burst ${burst.toFixed(1)}s, ` +
+       `${(odShare * 100).toFixed(0)}% of the run invincible ` + (odShare < 0.35 ? "✔ a burst, not a god mode" : "!! GOD MODE"));
 }

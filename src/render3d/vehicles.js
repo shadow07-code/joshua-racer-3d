@@ -6,6 +6,7 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { ONCOMING } from "../config.js";
+import { FLINCH_T } from "../entities/traffic.js";
 
 function rbox(w, h, d, r) {
   r = r ?? Math.max(0.25, Math.min(w, h, d) * 0.3);
@@ -137,6 +138,10 @@ export function makeTrafficView(scene, road) {
       g.rotation.order = "YXZ";
       const onc = car.oncoming ? -1 : 1;
       g.rotation.set(-road.gradeAt(car.z) * onc, road.headingAt(car.z) + (car.oncoming ? Math.PI : 0), 0);
+      // A shaved car FLINCHES (traffic.js): its nose jinks the way it is being
+      // pushed and settles again — one quick arc, so it reads as a startled
+      // driver rather than a lane change.
+      if (car.flinchT > 0) g.rotation.y += onc * car.flinchDir * 0.16 * Math.sin(Math.PI * (1 - car.flinchT / FLINCH_T));
 
       const ud = g.userData;
       // Everyone's lamps come up after dark; oncoming cars run a touch hotter
