@@ -108,6 +108,7 @@ export const CAMERA = {
   lookAhead: 42,     // look-at point this far ahead down the curve
   lateralFollow: 0.5,  // how much the cam slides with the car's lateral offset
   lookLateral: 0.72,   // how much the look-at point tracks the car laterally
+  lookLead: 0.09,      // ...plus this many seconds of the car's lateral velocity
   posDampK: 7.5,     // exponential damping rate for camera position
   lookDampK: 6.0,    // exponential damping rate for the look-at point
   // Speed-reactive dolly: as speed climbs the camera eases BACK and DROPS toward
@@ -126,15 +127,29 @@ export const CAMERA = {
   far: 700,
 };
 
-// Steering FEEL (visual only — the sim's lateral motion is unchanged). Smooths
-// the rubbery instant slide and makes the car steer like a real car: front
-// wheels turn, the nose yaws into the move, and the body banks.
+// Steering FEEL (visual only — the sim's lateral motion is unchanged). Read by
+// render3d/pose.js, which turns the sim's lateral motion into what the body of
+// the car does: where the nose points, how it leans, how it shivers at speed.
 export const STEER = {
   wheelMax: 0.5,     // max front-wheel yaw (radians) at full lock
-  yawIntoTurn: 0.14, // how far the whole car points into the turn (radians)
-  bank: 0.16,        // body roll (radians) — now driven by actual lateral MASS, not input
-  driftYaw: 0.55,    // extra nose rotation from slip — the drift/oversteer look
+  // NOSE. Mostly the direction the car is actually travelling (a fraction of
+  // it: at up to 55° of real travel, all of it would look like a crash), led a
+  // little by the steering so the car turns in before its mass follows, plus
+  // oversteer slip on turn-ins and hard reversals. On a spring, so it has mass.
+  travelYaw: 0.42,   // share of the real direction of travel the nose shows
+  yawIntoTurn: 0.08, // lead from the steering itself (radians at full lock)
+  driftYaw: 0.40,    // extra swing from slip — ONLY while it agrees with the steer
+  yawHz: 3.0, yawDamp: 0.75,
+  // LEAN. Out of the turn, from lateral ACCELERATION (turn-in, then a rock back
+  // through level as you straighten), with a little held lean from lateral speed.
+  bank: 0.06,        // radians of lean at full lateral speed
+  bankAccel: 0.17,   // radians of lean per unit of normalised lateral load
+  rollHz: 2.2, rollDamp: 0.45,
   pitch: 0.030,      // weight transfer: squat under power, dive on impact (radians)
+  // ROAD BUZZ at top speed (scales with speed²): body height and lean jitter.
+  buzzLift: 0.045, buzzRoll: 0.0035,
+  // SCRUB: slip beyond this is the tyres being dragged sideways (smoke, screech).
+  scrubFrom: 0.5,
 };
 
 // Gentle sweeping road curvature κ(z) = 1/radius, as a sum of slow sines so the

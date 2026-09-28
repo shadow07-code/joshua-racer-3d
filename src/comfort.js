@@ -17,6 +17,7 @@ const SPECTACLE = {
   vignetteMax: 0.3,           // peak edge-darkening opacity at top speed
   speedLines: true,
   roll: CAMERA.roll,          // camera banks a few degrees with the slide
+  speedBuzz: 0.0022,          // radians of high-speed lens shiver at full speed
 };
 
 const COMFORT = {
@@ -28,6 +29,7 @@ const COMFORT = {
   vignetteMax: 0.5,           // stronger tunnel
   speedLines: false,
   roll: 0,                    // horizon welded level — the whole point of the mode
+  speedBuzz: 0,               // and no shiver
 };
 
 export function isComfort() { return state.enabled; }

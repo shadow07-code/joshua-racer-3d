@@ -159,3 +159,37 @@ const noInput = { steer: 0 };
   for (let i = 0; i < 60 * 6; i++) { updatePlayer(q, DT, noInput, {}); if (T.checkRampHit(sys2, playerBox(q), q.y)) miss++; }
   console.log(`   30u off the ramp lane: triggered ${miss}× (must be 0)`);
 }
+
+// ── 9. The car's body: the nose never points against the slide ──────────────
+// render3d/pose.js is pure math, so the LOOK of the driving is testable too. The
+// bug this guards against: a nose driven by slip flicked ~15° the wrong way the
+// instant you released a lane change, while the car was still sliding the other
+// way — a fishtail on every single lane change.
+{
+  const { makePose, updatePose } = await imp("render3d/pose.js");
+  const halfWidth = ROAD.halfWidth;
+  ROAD.halfWidth = 1e5;                            // open road: no barrier in the way
+  const run = (script, secs) => {
+    const p = makePlayer(); p.throttle01 = 0.97; p.speed = PHYS.maxSpeed * 0.97; p.lastSpeed = p.speed;
+    const q = makePose();
+    let against = 0, peakYaw = 0, peakRoll = 0, rollBack = 0, scrub = 0;
+    for (let t = 0; t < secs; t += DT) {
+      updatePlayer(p, DT, { steer: script(t) }, {});
+      updatePose(q, p, DT);
+      // "Against": nose more than 3° to one side while sliding over 10 u/s the other.
+      if (Math.abs(p.vx) > 10 && Math.sign(q.yaw) !== Math.sign(p.vx) && Math.abs(q.yaw) > 0.05) against++;
+      peakYaw = Math.max(peakYaw, Math.abs(q.yaw));
+      peakRoll = Math.min(peakRoll, q.roll);
+      rollBack = Math.max(rollBack, q.roll);
+      scrub = Math.max(scrub, q.scrub);
+    }
+    return { against, peakYaw, peakRoll, rollBack, scrub };
+  };
+  const d = (r) => (r * 57.2958).toFixed(0);
+  const lc = run((t) => (t < 0.35 ? 1 : 0), 1.2);
+  console.log(`9. POSE     lane change: nose peaks ${d(lc.peakYaw)}°, leans ${d(-lc.peakRoll)}° out and rocks ${d(lc.rollBack)}° back; ` +
+    `frames nosing against the slide: ${lc.against} (must be 0), tyre scrub ${lc.scrub.toFixed(2)} (want ~0)`);
+  const rv = run((t) => (t < 0.5 ? 1 : t < 0.85 ? -1 : 0), 1.6);
+  console.log(`   hard reversal: nose swings to ${d(rv.peakYaw)}°, tyre scrub ${rv.scrub.toFixed(2)} (want high)`);
+  ROAD.halfWidth = halfWidth;
+}

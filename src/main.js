@@ -41,6 +41,7 @@ import { makeScenery } from "./render3d/scenery.js";
 import { makeEnvironment } from "./render3d/environment.js";
 import { makeEffects } from "./render3d/effects.js";
 import { makeParticles } from "./render3d/particles.js";
+import { makePose, updatePose, kickPose, resetPose } from "./render3d/pose.js";
 import { makeComposer } from "./render3d/postfx.js";
 import { makeScoreState, startScoring, tickScore, finalizeScore, bestEverScore } from "./scoring.js";
 import { makeHud } from "./hud.js";
@@ -64,6 +65,9 @@ initPwa();
 
 const player = makePlayer();
 const _carPos = new THREE.Vector3();
+// What the BODY of the car is doing — nose, lean, road buzz, wheel spin, tyre
+// scrub. Visual only; see render3d/pose.js.
+const pose = makePose();
 
 // Traffic (Phase 2).
 const traffic = makeTrafficSystem();
@@ -166,6 +170,7 @@ function resetWorld() {
   player.y = 0; player.vy = 0; player.airT = 0; player.airborne = false;
   player.invuln = 1.5;
   player.rampage = 0; player.throttle01 = HEAT.speedFloor;
+  resetPose(pose);
   Object.assign(heat, makeHeat());
   draftT = 0; draftStreak = 0;
   cancelDrift(player);
@@ -287,7 +292,11 @@ function takeHit(severity, invulnSec) {
   crashFlash = 0.5;
   player.steerVis = 0; player.steerSmooth = 0; player.vx = 0; player.slip = 0;
   cancelDrift(player);                            // ... and throws away the slide
-  player.steerLock = 0.45;                        // un-bank + brief straight recovery
+  // A brief straight recovery (and it clears a pad latched through the crash).
+  // Shortened from 0.45s: the 1.4s of invulnerability already covers you, and
+  // having your thumb ignored for half a second is what made a crash feel like
+  // losing the car rather than taking a knock.
+  player.steerLock = 0.3;
   sfxCrash();
   juice.hitStop(0.09); juice.addShake(0.55); juice.rumble([50, 40, 90]);
   emitImpact(1);
@@ -431,7 +440,7 @@ function backAt(z) {
 // Rubber off the rear tyres. Rate scales with how hard the car is actually
 // crossing the road, so a committed slide boils and a lazy one wisps.
 function emitTyreSmoke(dt, intensity) {
-  smokeAcc += dt * (16 + 40 * intensity);
+  smokeAcc += dt * (10 + 64 * intensity);
   let n = Math.floor(smokeAcc);
   if (n <= 0) return;
   smokeAcc -= n;
@@ -475,6 +484,16 @@ function onDriftBanked(t, sum, sustained) {
   juice.addShake(0.1);
 }
 
+// Clipping the barrier. It used to be a sound and nothing else; now the car
+// jolts (the lean spring in pose.js takes the sudden stop of the slide, and this
+// adds the knock) and the camera and the phone both feel it.
+function onFenceBump() {
+  sfxBump();
+  juice.addShake(0.1);
+  juice.rumble(18);
+  kickPose(pose, -player.edgeContact * 1.5, 0);
+}
+
 // Touchdown after a ramp jump — air time is the score, and the longer it was the
 // harder the landing lands.
 function onLanded(air) {
@@ -503,6 +522,7 @@ function stepAttract(dt) {
   // (the derivative of its sway) and a little slip — otherwise it drives flat.
   player.vx = Math.cos(attractT * 0.45) * 0.45 * 22;
   player.slip = player.steerVis * 0.25;
+  updatePose(pose, player, dt);
   updateTraffic(traffic, dt, player.z, { playerX: player.x, onPassed: () => {}, onNearMiss: () => {} });
   const speed01 = player.speed / PHYS.maxSpeed;
   const fov = effects.update(dt, speed01);
@@ -516,11 +536,12 @@ function stepRace(dt) {
   const flameBefore = heat.flameout;
 
   updatePlayer(player, dt, input, {
-    onFenceBump: sfxBump,
+    onFenceBump: onFenceBump,
     onLand: onLanded,
     onDriftEnd: onDriftBanked,
   });
   raceTime += dt;
+  updatePose(pose, player, dt);
 
   // ── SECTORS ── Distance-gated, so running hot moves you through the game
   // faster. Each one announces itself and rewrites the rules; the sector you
@@ -657,7 +678,9 @@ function stepRace(dt) {
     const t = checkTrafficHit(traffic, playerBox(player), player.y);
     if (t) {
       smashCar(t, player.x);                       // knock the hit car aside (no clip-through)
-      player.x += player.x > t.x ? 3.5 : -3.5;
+      const away = player.x > t.x ? 1 : -1;
+      player.x += away * 3.5;
+      kickPose(pose, away * 8, -away * 3);         // the body is knocked sideways and swings back
       player.steerSmooth = 0;
       // A head-on arrives at roughly double the closing speed and hurts to match.
       const headOn = !!t.oncoming;
@@ -667,7 +690,7 @@ function stepRace(dt) {
     // Flaming barrel (skipped if a traffic hit this frame already granted invuln).
     if (player.invuln <= 0 && !player.airborne) {
       const bar = checkBarrelHit(cops, playerBox(player));
-      if (bar) { bar.hit = true; takeHit(0.5, 1.2); }
+      if (bar) { bar.hit = true; kickPose(pose, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 4); takeHit(0.5, 1.2); }
     }
   }
 
@@ -726,8 +749,12 @@ function stepRace(dt) {
   // A slide you can HEAR — and SEE — is worth far more than one you can only
   // infer from a number: this is what tells the player they are doing the thing
   // the game rewards.
+  // Keyed to how hard the tyres are actually being dragged sideways (pose.scrub:
+  // a hard reversal), with a light haze and a quieter note under any scoring
+  // drift so the DRIFT counter still has something to point at. It used to be
+  // the full effect on every lane change, which made the big ones mean nothing.
   const lateral = Math.min(1, Math.abs(player.vx) / PHYS.steerSpeed);
-  const skidLevel = (player.airborne || !player.drifting) ? 0 : lateral;
+  const skidLevel = player.airborne ? 0 : Math.max(pose.scrub, player.drifting ? 0.3 * lateral : 0);
   const skidding = skidLevel > 0.12;
   if (skidding && !skidOn) { startSkid(); skidOn = true; }
   else if (!skidding && skidOn) { stopSkid(); skidOn = false; }
@@ -843,14 +870,13 @@ function render() {
   car.root.position.copy(_carPos);
   car.root.position.y += player.y || 0;            // ramp jumps lift the whole car
   car.setAir(player.y || 0);                       // ...but its shadow stays on the road
-  // Nose yaw = road heading + steering intent + SLIP. The slip term is the drift:
-  // the car rotates into a turn ahead of its mass, and counter-settles on release.
-  car.root.rotation.y = road.headingAt(player.z)
-    + player.steerVis * STEER.yawIntoTurn
-    + (player.slip || 0) * STEER.driftYaw;
-  // Lean follows the actual sideways MASS (vx), not the input — so the body keeps
-  // leaning while the car is still sliding, and rights itself as the slide bleeds off.
-  car.body.rotation.z = -(player.vx || 0) / PHYS.steerSpeed * STEER.bank;
+  // Nose and lean come from pose.js: the nose follows the car's real path (led a
+  // touch by the steering, swung by oversteer), the body leans out under lateral
+  // load and rocks back through level, and both sit on springs so they have mass.
+  car.root.rotation.y = road.headingAt(player.z) + pose.yaw;
+  car.body.rotation.z = pose.roll + pose.buzzRoll;
+  car.body.position.y = pose.lift;                 // road buzz through the chassis
+  car.setWheelSpin(pose.spin);
   // Weight transfer: squat under power, dive under braking/impact.
   // Negated: a positive rotation.x pitches the nose DOWN in three.js, and under
   // power the nose should lift (squat) — a crash then dives it. In the air the
@@ -864,8 +890,11 @@ function render() {
     : -(player.accel01 || 0) * STEER.pitch) - road.gradeAt(player.z);
   car.setSteer(player.steerVis * STEER.wheelMax);
   car.setRampage(player.rampage > 0, performance.now() / 1000);
-  // Blink the car while invulnerable (just after a crash), but only mid-race.
-  car.root.visible = !(state === STATE.RACE && player.invuln > 0 && Math.floor(performance.now() / 70) % 2 === 0);
+  // Flicker the car while invulnerable (just after a crash), but only mid-race.
+  // Gone for 45ms of every 150: still unmistakable, but a pulse rather than the
+  // old half-on/half-off 70ms strobe, which made the car you are steering out
+  // of trouble invisible for half of the moment you most need to see it.
+  car.root.visible = !(state === STATE.RACE && player.invuln > 0 && performance.now() % 150 < 45);
   trafficView.update(traffic, FIXED_DT, player.z);
   coinsView.update(traffic, player.z);
   nitroView.update(traffic, player.z);

@@ -15,7 +15,7 @@ export function makeChaseCam(camera, road) {
   const desiredPos = new THREE.Vector3();
   const desiredLook = new THREE.Vector3();
   let inited = false;
-  let roll = 0;
+  let roll = 0, buzzT = 0;
 
   function computeDesired(player) {
     // Speed-reactive dolly: the faster you go, the further back and the LOWER the
@@ -30,7 +30,11 @@ export function makeChaseCam(camera, road) {
     const air = player.y || 0;
     road.worldPos(player.z - back, player.x * CAMERA.lateralFollow, desiredPos);
     desiredPos.y += height + air * 0.55;
-    road.worldPos(player.z + CAMERA.lookAhead, player.x * CAMERA.lookLateral, desiredLook);
+    // ...and it LOOKS WHERE YOU ARE GOING: the aim point leads the car's lateral
+    // velocity, so a lane change opens up the lane you are heading into instead
+    // of staring at the one you are leaving.
+    road.worldPos(player.z + CAMERA.lookAhead,
+      player.x * CAMERA.lookLateral + (player.vx || 0) * CAMERA.lookLead, desiredLook);
     desiredLook.y += 2.2 + air * 0.8;
   }
 
@@ -56,6 +60,16 @@ export function makeChaseCam(camera, road) {
     const targetRoll = -(player.vx || 0) / PHYS.steerSpeed * (cp.roll || 0);
     roll += (targetRoll - roll) * approach(5.5, dt);
     if (Math.abs(roll) > 0.0002) camera.rotateZ(roll);
+    // SPEED BUZZ. A fraction of a degree of high-frequency shiver once you are
+    // properly fast — the lens bolted to a car doing 200, not floating behind it.
+    // Grows with the square of the top of the speed range; Comfort Mode has none.
+    const fast = Math.max(0, Math.min(1, (player.speed / PHYS.maxSpeed - 0.7) / 0.3));
+    if (cp.speedBuzz && fast > 0 && !player.airborne) {
+      buzzT += dt;
+      const k = cp.speedBuzz * fast * fast;
+      camera.rotateX(k * (Math.sin(buzzT * 47.3) * 0.6 + Math.sin(buzzT * 89.1 + 1.1) * 0.4));
+      camera.rotateY(k * 0.6 * (Math.sin(buzzT * 53.9 + 2.3) * 0.5 + Math.sin(buzzT * 77.7) * 0.5));
+    }
 
     if (fov != null && Math.abs(camera.fov - fov) > 0.01) {
       camera.fov = fov;

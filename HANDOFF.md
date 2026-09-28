@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v29` — **bump on every code change** |
+| **Service worker** | `jr3d-v30` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -200,6 +200,37 @@ went 35 → 6-9. Drain was softened (`drainBase` 0.045 → 0.040, `drainScale` 0
 → 0.058) to match the thinner road, and harness section P (**COLD RECOVERY**) now
 proves a starving player can still reach enough traffic to climb out.
 
+### Then: FEEL pass 2 — the body of the car (2026-09-28)
+
+The owner asked for the raw driving to feel better, explicitly not new
+features. Nothing in the simulation changed — every harness number is identical
+before and after — because the problem was never where the car went, it was
+what the car LOOKED like getting there. Measured in node (scratch probes) and
+then filmed frame by frame in the browser (see the debug build, §6):
+
+- **The nose pointed the wrong way.** Yaw was `steer + slip`. Slip is largest
+  the instant you press and flips sign the instant you let go, so every lane
+  change was a 15° twitch in, a crab across the road with the nose at 8° while
+  the car actually travelled at 34–54°, and then a **15° flick the wrong way on
+  release** while still sliding. `render3d/pose.js` now points the nose along a
+  share of the real direction of travel, led a touch by the steering, with slip
+  added only while it agrees with the wheels (turn-ins, hard reversals) — all
+  on a spring, so it has mass. Lane change: builds to ~20°, eases home.
+- **The lean had no weight.** It was a straight readout of vx, so it tipped to a
+  fixed angle and hung there. It is now lateral LOAD on a spring: leans out on
+  turn-in, rocks back through level as you straighten; a reversal throws the
+  body from −4° to +7°.
+- **Smoke and screech follow the tyres, not the score.** `pose.scrub` (slip past
+  `STEER.scrubFrom`) drives them, so a hard reversal smokes and an ordinary lane
+  change leaves a faint haze (still enough to back up the DRIFT counter). The
+  smoke sprite is a lumpy cluster, not a radial ball.
+- **Small life:** the wheels roll; a speed²-scaled road buzz through the body;
+  a fraction of a degree of lens shiver near top speed (`speedBuzz`, zero in
+  Comfort Mode); the camera aims `lookLead` seconds along your lateral velocity;
+  crashes and the barrier KICK the body instead of snapping it straight; the
+  post-crash invulnerability flicker is a pulse, not a 50% strobe; and the
+  post-crash steering lockout is 0.3s, down from 0.45s.
+
 ### Then: the SMILE pass — five refinements, no new controls (2026-09-27)
 
 The owner asked for fine refinements that make the game more fun, within the
@@ -368,6 +399,7 @@ src/
   ui.js           menu overlay manager (title/name/leaderboard/tutorial/paused) + lb render
   leaderboard.js  leaderboard client (fetch/submit + offline cache + pending retry; jr3d.* keys)
   comfort.js      Comfort Mode parameter sets
+  render3d/pose.js  what the car's BODY does: nose, lean, road buzz, wheel spin, tyre scrub (pure math)
   pwa.js          SW registration + install funnel (splash/button/banner) + landscape gate
   entities/
     player.js     speed ramp, asymmetric steer ease, LATERAL MOMENTUM + slip, fences, weight transfer
@@ -474,9 +506,12 @@ Everything numeric lives in **`src/config.js`**.
 | **THE WHOLE GAME** | `HEAT` | `drainBase`/`drainScale` set how long coasting buys you; `nearMiss`, `draftRate`/`draftRange`, `airRate`, `canister` are the refills; `crash` (0.45) is why hot = safe; `speedFloor` (0.60) **must** stay above the fastest traffic or cold becomes a death spiral |
 | Traffic amount | `SPAWN_ROW_GAP` (125) + `HEAT.densityMul` (0.28, inverted) | see the density dials table below — **run `tools/densitytest.mjs` after any change** |
 | **Drift / looseness** | `PHYS.grip` (10) | **lower = more slide**, higher = planted/on-rails |
-| Drift look | `STEER.driftYaw` (0.55) | how far the nose over-rotates vs the path |
+| Nose angle | `STEER.travelYaw` (0.42), `yawIntoTurn` (0.08), `driftYaw` (0.40), `yawHz`/`yawDamp` (3.0/0.75) | read by `render3d/pose.js`. `travelYaw` is the share of the real direction of travel the nose shows; `driftYaw` only applies while slip agrees with the steer — **never let slip drive the nose on a release** (§6) |
 | Steering rate | `PHYS.steerSpeed` (112), `steerEase` (16) | ease is **×3.5 on release/reversal** — do NOT make this symmetric (§6) |
-| Lean / pitch | `STEER.bank` (0.16), `.pitch` (0.030) | bank is driven by **actual vx**, not input |
+| Lean / pitch | `STEER.bank` (0.06) + `bankAccel` (0.17), `rollHz`/`rollDamp` (2.2/0.45), `.pitch` (0.030) | lean is mostly lateral **acceleration** on a spring, a little lateral speed |
+| Tyre smoke / screech | `STEER.scrubFrom` (0.5) + `main.js` `skidLevel` | slip past this = scrubbing; lane changes get `0.3 × lateral` only |
+| Road buzz / lens shiver | `STEER.buzzLift`/`buzzRoll`, `comfort.js` `speedBuzz` (0.0022) | both scale with speed² near the top |
+| Camera look-ahead | `CAMERA.lookLead` (0.09 s) | how far the aim leads your lateral velocity |
 | Speed | `PHYS.maxSpeed` (108) | the low road-scroll lever; km/h = `speed/maxSpeed*200` |
 | Gears | `src/gearbox.js` `BANDS`, `REV_FLOOR` (0.55) | floor sets the shift drop (~43%); 0.34 was far too much |
 | Camera | `CAMERA` back 24 / height 11 / `backAtSpeed` 7 / `dropAtSpeed` 2.6 | |
@@ -509,7 +544,7 @@ Everything numeric lives in **`src/config.js`**.
 | Overdrive trigger / length | `HEAT.overdriveAt` / `overdriveDrain` / `smash` | 0.95 / 0.16/s / +0.05 per car — **only smashes feed it** |
 | Clutch save | `HEAT.clutchAfter` / `clutchScore` | 1.5s of siren / +1,000 |
 | Traffic flinch | `FLINCH_TIGHT` / `FLINCH_VX` / `FLINCH_T` in `entities/traffic.js` | 0.35 / 24 / 0.4s |
-| Smoke/spark density | `render3d/particles.js` emitter rates | smoke `16 + 40×intensity`/s, sparks 90/s |
+| Smoke/spark density | `render3d/particles.js` emitter rates | smoke `10 + 64×intensity`/s (intensity = scrub), sparks 90/s |
 
 ### Density dials — **run `node tools/densitytest.mjs` after touching ANY of these**
 
@@ -634,6 +669,18 @@ that a ramp triggers exactly once and only in its own lane.
   and call the stored callback in a loop — the pattern is in this session's
   transcript. Note that screenshots can lag the JS state by a frame or two, so
   read the DOM for truth and use the picture for looks.
+  **Better: the DEBUG BUILD.** `_debug.html` + `src/_debug_main.js` are generated
+  (both git-ignored — **delete them before `vercel --prod`**, and check the live
+  site 404s on them): the page forces sound OFF, stubs rAF before the modules
+  load, blocks the blur/visibility auto-pause, and loads a copy of `main.js`
+  that ends with `window.__jr3d = { player, traffic, heat, pose, car, ... }`
+  plus `clearTraffic()` / `setHeat()`. With that you can empty the road, pin
+  the heat, steer with synthetic key events, and FILM a manoeuvre: draw the
+  WebGL canvas into a 2D canvas right after each stepped frame (same task, so
+  the drawing buffer is still valid), tile 4 frames with state labels, show the
+  sheet in an `<img>` overlay and screenshot it. The pane's zoom action does not
+  work — tile at 450×210 so the screenshot is 1:1. Generator scripts live in the
+  session scratchpad; the pattern is in the 2026-09-28 transcript.
   **If the pane is hidden the stub is too late** — the pending frame was queued
   with the REAL rAF and never fires, so the stub never captures anything. Copy
   `index.html` to an untracked `_debug.html` with the stub (plus capture-phase
@@ -645,6 +692,16 @@ that a ramp triggers exactly once and only in its own lane.
   only runs on the first tap. So `audio.js` reads the saved `jr3d.sfx` at module
   load; when it only read it inside `initAudio()`, the button said ON to a player
   who had switched sound off, right up until they touched the screen.
+
+- **Never let slip drive the nose on a release.** Slip is (target lateral
+  speed − actual) and flips sign the moment you let go, so a nose driven by it
+  swings the wrong way while the car is still sliding the other — a fishtail on
+  every single lane change. `pose.js` only adds slip while it agrees with the
+  steer. Same family: roll from lateral SPEED hangs at an angle; roll from
+  lateral ACCELERATION rocks, which is what weight looks like.
+- **Node probes: never cache-bust a module URL** (`?v=...`). The importing
+  modules load `../config.js` without the query, so you get two config objects
+  and a tweak you make to one silently never reaches the code under test.
 
 - **Anything that feeds heat during OVERDRIVE makes it permanent for a good
   player.** Its drain (0.16/s) is less than a skilled shave rate pays, so when

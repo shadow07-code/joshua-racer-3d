@@ -61,6 +61,38 @@ function softTexture(inner, outer) {
   return tex;
 }
 
+// A lumpy puff for smoke: a cluster of soft blobs under a radial mask. Every
+// particle shares one texture, but at a dozen sizes and overlapping, a cluster
+// reads as smoke where a perfect radial gradient reads as a row of pale balls.
+function puffTexture() {
+  const s = 64, c = s / 2;
+  const cv = document.createElement("canvas");
+  cv.width = s; cv.height = s;
+  const g = cv.getContext("2d");
+  // Fixed layout (no Math.random), so the look never changes between loads.
+  const blobs = [[0, 0, 0.62, 0.7], [-0.3, -0.18, 0.4, 0.58], [0.28, -0.22, 0.36, 0.52], [0.2, 0.3, 0.4, 0.52],
+    [-0.26, 0.26, 0.34, 0.48], [0.05, -0.36, 0.3, 0.42], [-0.4, 0.05, 0.26, 0.38], [0.42, 0.06, 0.26, 0.34]];
+  for (const [bx, by, br, ba] of blobs) {
+    const x = c + bx * c, y = c + by * c, r = br * c;
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, "rgba(255,255,255," + ba + ")");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, s, s);
+  }
+  // Fade the whole cluster to nothing well inside the sprite's square.
+  g.globalCompositeOperation = "destination-in";
+  const mask = g.createRadialGradient(c, c, 0, c, c, c);
+  mask.addColorStop(0, "rgba(0,0,0,1)");
+  mask.addColorStop(0.55, "rgba(0,0,0,0.75)");
+  mask.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = mask;
+  g.fillRect(0, 0, s, s);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 // One pool: flat typed arrays, a free-list cursor that wraps. Oldest particles
 // are recycled when the pool is exhausted, which is always the right answer for
 // this kind of effect — the newest puff matters more than the oldest.
@@ -139,8 +171,9 @@ function makePool(scene, max, blending, tex) {
 }
 
 export function makeParticles(scene) {
-  const smoke = makePool(scene, SMOKE_MAX, THREE.NormalBlending,
-    softTexture("rgba(255,255,255,0.85)", "rgba(255,255,255,0.34)"));
+  // Smoke wants a lumpy puff with no edge — the old solid core with a rim read
+  // as a pale ball sitting on the tarmac.
+  const smoke = makePool(scene, SMOKE_MAX, THREE.NormalBlending, puffTexture());
   const spark = makePool(scene, SPARK_MAX, THREE.AdditiveBlending,
     softTexture("rgba(255,255,255,1)", "rgba(255,190,90,0.6)"));
 
@@ -149,18 +182,20 @@ export function makeParticles(scene) {
 
   const rnd = (a) => (Math.random() * 2 - 1) * a;
 
-  // Tyre smoke — the thing a slide leaves behind. `heat01` warms it from clean
-  // white rubber dust toward a dirty grey, so a long slide visibly cooks.
+  // Tyre smoke — the thing a slide leaves behind. `heat01` is how hard the tyres
+  // are scrubbing: it thickens the smoke and dirties it from pale rubber dust
+  // toward grey. Low and spreading, so it lies on the road as a haze that the
+  // car tears out of, rather than a line of balls.
   function tyreSmoke(x, y, z, back, n = 1, heat01 = 0) {
     for (let i = 0; i < n; i++) {
       const g = 0.86 - 0.22 * heat01 + rnd(0.05);
       smoke.spawn(
-        x + rnd(1.2), y + 0.4 + Math.random() * 0.5, z + rnd(1.2),
-        rnd(6) - back.x * 7, 2.5 + Math.random() * 4, rnd(6) - back.z * 7,
+        x + rnd(1.0), y + 0.3 + Math.random() * 0.4, z + rnd(1.4),
+        rnd(7) - back.x * 7, 1.2 + Math.random() * 2.4, rnd(7) - back.z * 7,
         g, g * 0.98, g * 0.96,
-        1.1 + Math.random() * 0.6, 2.6 + Math.random() * 2.0,
-        0.45 + Math.random() * 0.4, 1.7, -1.0,
-        0.24 + 0.22 * Math.random(),
+        0.8 + Math.random() * 0.5, 4.2 + Math.random() * 3.2,
+        0.55 + Math.random() * 0.5, 1.9, -0.6,
+        (0.09 + 0.24 * heat01) * (0.7 + 0.6 * Math.random()),
       );
     }
   }

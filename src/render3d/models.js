@@ -158,7 +158,13 @@ export function makeCar() {
     flames.push(fl);
   }
 
+  // Front wheels steer about Y and roll about their own axle, so the rotation
+  // order is YXZ: roll first, then point the rolled wheel where it is steered.
+  frontL.rotation.order = "YXZ"; frontR.rotation.order = "YXZ";
   function setSteer(angle) { frontL.rotation.y = angle; frontR.rotation.y = angle; }
+  // The wheels roll. They were frozen, which at 200 km/h is the tell of a toy
+  // being slid along a table — most visible the moment the car yaws in a slide.
+  function setWheelSpin(a) { frontL.rotation.x = a; frontR.rotation.x = a; rearL.rotation.x = a; rearR.rotation.x = a; }
 
   function setRampage(on, t = 0) {
     aura.visible = on;
@@ -190,7 +196,7 @@ export function makeCar() {
     poolMat.opacity = 0.40 * nightLevel * fade;
   }
 
-  return { root, body, setSteer, setRampage, setNight, setAir };
+  return { root, body, setSteer, setWheelSpin, setRampage, setNight, setAir };
 }
 
 function makeLetterTexture(ch) {
