@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v30` — **bump on every code change** |
+| **Service worker** | `jr3d-v31` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -420,7 +420,7 @@ src/
     scenery.js    palms + reflector posts + NEON BILLBOARDS (night-only, coast-only)
     environment.js  sea + sand causeway + tunnel pool + BRIDGE (deck/towers/cables) + setNight
     zones.js      zoneTypeAt(z) + zoneBlend(z,type): coast/tunnel/bridge (4200-unit supersection)
-    effects.js    speed vignette + FOV kick + radial speed lines
+    effects.js    speed vignette + FOV kick + speed streaks (dashes that fly outward, `STREAK`)
     postfx.js     EffectComposer: RenderPass → UnrealBloom → OutputPass (fx.render())
 ```
 
@@ -544,6 +544,7 @@ Everything numeric lives in **`src/config.js`**.
 | Overdrive trigger / length | `HEAT.overdriveAt` / `overdriveDrain` / `smash` | 0.95 / 0.16/s / +0.05 per car — **only smashes feed it** |
 | Clutch save | `HEAT.clutchAfter` / `clutchScore` | 1.5s of siren / +1,000 |
 | Traffic flinch | `FLINCH_TIGHT` / `FLINCH_VX` / `FLINCH_T` in `entities/traffic.js` | 0.35 / 24 / 0.4s |
+| Speed streaks | `STREAK` in `render3d/effects.js` | `band` (speed01 fade-in 0.5→1.02), `k` (how fast they fly), `alpha`, `gap` (empty wedge over the car). Length = travel in `shutter` s, so fast = long |
 | Smoke/spark density | `render3d/particles.js` emitter rates | smoke `10 + 64×intensity`/s (intensity = scrub), sparks 90/s |
 
 ### Density dials — **run `node tools/densitytest.mjs` after touching ANY of these**
