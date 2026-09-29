@@ -63,7 +63,11 @@ export function makeEnvironment(scene, road) {
   const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 
   // ── Sea ──
-  const seaMat = new THREE.MeshStandardMaterial({ color: 0x35637c, metalness: 0.2, roughness: 0.3 });
+  // Roughness sets the size of the low sun's glint on the water. At 0.3 it was a
+  // round, blown-out white blob sitting at road height beside the car — it read
+  // as a smudge on the lens, not as sunlight on water. 0.45 draws it as a thin
+  // line of light on the horizon, which is what low sun on a sea looks like.
+  const seaMat = new THREE.MeshStandardMaterial({ color: 0x35637c, metalness: 0.2, roughness: 0.45 });
   seaMat.envMapIntensity = 0.8;
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), seaMat);
   sea.rotation.x = -Math.PI / 2;

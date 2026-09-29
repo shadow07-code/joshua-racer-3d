@@ -6,13 +6,16 @@ here can be reverted on its own — each entry is one commit.
 
 ## Backlog (noticed, not yet done — pick from here, re-rank as you go)
 
-- A large white glow sits right of the road at road height in every dusk frame,
-  apart from the sun disc above it. Find out what it is (sun bloom? a sprite?)
-  and whether it reads as a bug.
 - Crash / barrier / landing: does the camera sell the hit (punch, not just shake)?
 - Near-miss moment: a brief lens response (FOV tick / streak burst) on a PERFECT.
 - HUD: is the speed readout + heat bar legible at a glance on a 375-wide phone?
 - Phone performance: pixel-ratio cap, shadow map size, particle counts.
+
+## 2026-09-29 — the sun's glint on the sea is a line, not a smudge (jr3d-v32)
+
+- **What:** sea `roughness` 0.3 → 0.45 (`render3d/environment.js`).
+- **Why:** the big white blob beside the road in every dusk frame was the low sun's specular on the sea (proved by A/B: gone with the sea hidden or rough, unchanged with the sun sprite hidden). At 0.3 it was round and blown out, right at road height — it read as a smudge on the lens.
+- **Evidence:** same frame (z=500, 191 km/h): fully clipped pixels below the horizon 256 → 0, near-white 738 → 420; film shows a thin line of light on the horizon water instead. Bridge frames unchanged. Harnesses unchanged, density worst 2.79.
 
 ## 2026-09-29 — speed streaks that actually move (jr3d-v31)
 
