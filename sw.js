@@ -2,7 +2,7 @@
 // Network-first for the app shell (HTML/JS/manifest) so deploys roll out live;
 // cache-first for heavy static assets (vendored Three.js, icons). Falls
 // back to cache when offline so the installed PWA still launches.
-const VERSION = "jr3d-v32";
+const VERSION = "jr3d-v33";
 const ASSETS = [
   "./",
   "./index.html",

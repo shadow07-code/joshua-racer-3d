@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v32` — **bump on every code change** |
+| **Service worker** | `jr3d-v33` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -514,7 +514,7 @@ Everything numeric lives in **`src/config.js`**.
 | Camera look-ahead | `CAMERA.lookLead` (0.09 s) | how far the aim leads your lateral velocity |
 | Speed | `PHYS.maxSpeed` (108) | the low road-scroll lever; km/h = `speed/maxSpeed*200` |
 | Gears | `src/gearbox.js` `BANDS`, `REV_FLOOR` (0.55) | floor sets the shift drop (~43%); 0.34 was far too much |
-| Camera | `CAMERA` back 24 / height 11 / `backAtSpeed` 7 / `dropAtSpeed` 2.6 | |
+| Camera | `CAMERA` back 16 / height 11 / `backAtSpeed` 5 / `dropAtSpeed` 2.6 / `lateralFollow` 0.62, fov 62 + `fovKick` 10 (comfort.js) | the chase also lags ~speed/`posDampK` (≈14 u flat out). Framing was 24/7/0.5 at 66+13 until 2026-09-29 — see TUNING_LOG |
 | Rampage | `RACE.rampage*` | |
 | Difficulty | `RACE.density*`, `densityWaveAmp/Period`, `copTriggerKmh` (150) | |
 | Coins | `RACE.coinRowChance` (0.28), `coinsPerTrail` (3), `SCORE.coinValue` | spawn on the **open gap lane** |

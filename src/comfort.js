@@ -9,8 +9,8 @@ import { CAMERA } from "./config.js";
 const state = { enabled: false };
 
 const SPECTACLE = {
-  fovBase: CAMERA.fov,        // 66
-  fovKick: 13,                // extra FOV at top speed (sense of speed)
+  fovBase: CAMERA.fov,        // 62
+  fovKick: 10,                // extra FOV at top speed (sense of speed) — 72° flat out; 79° shrank the traffic you must read
   fovKickEnabled: true,
   posDampK: CAMERA.posDampK,  // 7.5
   lookDampK: CAMERA.lookDampK, // 6.0

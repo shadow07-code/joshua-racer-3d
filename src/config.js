@@ -103,10 +103,15 @@ export const WORLD = {
 // Damped third-person chase camera. Distances are in world units (same scale as
 // the road). Higher damp-K = snappier; Comfort Mode lowers them for a held shot.
 export const CAMERA = {
-  back: 24,          // distance behind the car along the road tangent (pulled back)
+  // FRAMING. The chase also lags its target by speed / posDampK (~14 units at
+  // top speed), so the real distance is back + backAtSpeed + that lag. At 24 +
+  // 7 + 14 with a 79° lens the car was 7.5% of a phone's width, parked on the
+  // horizon, with the bottom 40% of the screen showing empty road between the
+  // lens and the car — and the traffic you have to read was 7-11 px tall.
+  back: 16,          // distance behind the car along the road tangent
   height: 11,        // height above the road
   lookAhead: 42,     // look-at point this far ahead down the curve
-  lateralFollow: 0.5,  // how much the cam slides with the car's lateral offset
+  lateralFollow: 0.62, // how much the cam slides with the car's lateral offset (closer cam = more)
   lookLateral: 0.72,   // how much the look-at point tracks the car laterally
   lookLead: 0.09,      // ...plus this many seconds of the car's lateral velocity
   posDampK: 7.5,     // exponential damping rate for camera position
@@ -114,7 +119,7 @@ export const CAMERA = {
   // Speed-reactive dolly: as speed climbs the camera eases BACK and DROPS toward
   // the road. Low + far reads as fast (the ground rushes closer to the lens), and
   // because it's tied to speed you FEEL acceleration as the world pulls away.
-  backAtSpeed: 7,    // extra distance behind at top speed
+  backAtSpeed: 5,    // extra distance behind at top speed
   dropAtSpeed: 2.6,  // how much lower the camera sits at top speed
   // A LITTLE ROLL. The horizon used to be welded level, which is comfortable and
   // completely inert — a racing camera that never tips reads like a camera on a
@@ -122,7 +127,7 @@ export const CAMERA = {
   // velocity (so it arrives WITH the slide, not with the button), and Comfort
   // Mode zeroes it. Small enough to feel and too small to disorient.
   roll: 0.055,       // radians of camera roll at full lateral velocity
-  fov: 66,           // FOV (Comfort Mode narrows it)
+  fov: 62,           // FOV (Comfort Mode narrows it); + comfort.js fovKick at speed
   near: 1,
   far: 700,
 };
