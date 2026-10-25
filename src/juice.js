@@ -6,17 +6,22 @@ import { isComfort } from "./comfort.js";
 
 let hitstop = 0;       // seconds of full sim-freeze remaining (impact "punch")
 let slowmo = 0;        // seconds of slow-mo remaining
-let slowmoScale = 1;   // sim time scale while slow-mo is active
+let slowmoDur = 0;     // ...of a slow-mo this long (for the easing envelope)
+let slowmoScale = 1;   // deepest sim time scale of the active slow-mo
 let trauma = 0;        // 0..1 shake energy (decays continuously)
 let _t = 0;            // shake noise clock
 
 // A hard freeze for a few frames — makes a crash/smash hit like a truck.
 export function hitStop(sec) { hitstop = Math.max(hitstop, isComfort() ? sec * 0.4 : sec); }
 
-// Bullet-time for a beat — reserved for the big moments (rampage trigger/exit).
+// Bullet-time for a beat. It EASES: time drops into the dip quickly and climbs
+// back out over the second half, so it reads as the world holding its breath
+// rather than a switch being thrown. A shallower or shorter dip arriving during
+// a deeper one does not cut it short.
 export function slowMo(sec, scale = 0.4) {
   if (isComfort()) return;
-  slowmo = Math.max(slowmo, sec);
+  if (slowmo > 0 && slowmoScale <= scale && slowmo >= sec) return;
+  slowmo = sec; slowmoDur = sec;
   slowmoScale = scale;
 }
 
@@ -28,7 +33,13 @@ export function addShake(amount) { trauma = Math.min(1, trauma + (isComfort() ? 
 export function update(realDt) {
   let scale = 1;
   if (hitstop > 0) { hitstop = Math.max(0, hitstop - realDt); scale = 0; }
-  else if (slowmo > 0) { slowmo = Math.max(0, slowmo - realDt); scale = slowmoScale; }
+  else if (slowmo > 0) {
+    slowmo = Math.max(0, slowmo - realDt);
+    const t = 1 - slowmo / slowmoDur;                // 0 → 1 through the dip
+    const ease = (x) => x * x * (3 - 2 * x);
+    const depth = t < 0.2 ? ease(t / 0.2) : t > 0.5 ? ease((1 - t) / 0.5) : 1;
+    scale = 1 - (1 - slowmoScale) * depth;
+  }
   trauma = Math.max(0, trauma - realDt * 1.7);
   _t += realDt;
   return scale;
@@ -65,4 +76,4 @@ export function rumble(ms) {
   try { navigator.vibrate(Math.round(isComfort() ? ms * 0.5 : ms)); } catch {}
 }
 
-export function resetJuice() { hitstop = 0; slowmo = 0; slowmoScale = 1; trauma = 0; }
+export function resetJuice() { hitstop = 0; slowmo = 0; slowmoDur = 0; slowmoScale = 1; trauma = 0; }

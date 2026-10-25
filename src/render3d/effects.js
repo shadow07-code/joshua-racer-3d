@@ -58,7 +58,11 @@ export function makeEffects() {
   const lctx = lineCanvas ? lineCanvas.getContext("2d") : null;
   const streaks = makeStreaks();
 
-  let vis = 0, fov = 66, drawn = true;
+  let vis = 0, fov = 62, drawn = true;
+  // LENS PUNCH — degrees of FOV added on top of the speed kick, decaying fast.
+  // Positive = the lens is blown open (a shave, OVERDRIVE); negative = it
+  // flinches in (an impact). Spectacle only: Comfort Mode ignores it.
+  let punch = 0, punchNow = 0;     // target (decays) and what the lens shows (attacks in ~2 frames)
 
   function band(t, a, b) {
     const x = Math.max(0, Math.min(1, (t - a) / (b - a)));
@@ -108,10 +112,18 @@ export function makeEffects() {
     fov += (targetFov - fov) * a;
 
     if (vignette) vignette.style.opacity = vis.toFixed(3);
-    stepStreaks(streaks, dt, speed01);
-    drawStreaks(cp.speedLines ? band(speed01, STREAK.band[0], STREAK.band[1]) : 0);
-    return fov;
+    punch *= Math.exp(-dt * 6);
+    punchNow += (punch - punchNow) * (1 - Math.exp(-dt * 30));
+    const open = cp.fovKickEnabled ? Math.max(0, punchNow) : 0;
+    // A blown-open lens also floods the streaks for a moment — the air rushing in.
+    stepStreaks(streaks, dt, speed01 + open * 0.06);
+    drawStreaks(cp.speedLines ? Math.min(1.4, band(speed01, STREAK.band[0], STREAK.band[1]) + open * 0.12) : 0);
+    return fov + (cp.fovKickEnabled ? punchNow : 0);
   }
 
-  return { update };
+  function punchLens(deg) {
+    if (Math.abs(deg) > Math.abs(punch) || Math.sign(deg) !== Math.sign(punch)) punch = deg;
+  }
+
+  return { update, punchLens };
 }

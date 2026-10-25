@@ -273,6 +273,7 @@ function registerSmash() {
   linkChain();                                    // ...which rings the next note
   score.score += SCORE.smashBonus * chain;
   juice.hitStop(0.035); juice.addShake(0.14); juice.rumble(35);
+  effects.punchLens(-1.5);
   emitImpact(0.7);
   hud.popup("SMASH ×" + chain, "smash");
 }
@@ -299,6 +300,7 @@ function takeHit(severity, invulnSec) {
   player.steerLock = 0.3;
   sfxCrash();
   juice.hitStop(0.09); juice.addShake(0.55); juice.rumble([50, 40, 90]);
+  effects.punchLens(-5);                          // the lens flinches IN on impact
   emitImpact(1);
   const lost = -addHeat(heat, -HEAT.crash);
   hud.popup("-" + Math.round(lost * 100) + " HEAT", "crash", true);
@@ -628,10 +630,15 @@ function stepRace(dt) {
           * (headOn ? HEAT.oncomingMul : 1) * (slung ? SLINGSHOT.heatMul : 1) * chainMul());
       }
       linkChain();
-      // A tight shave rewards skill: a micro-freeze that punctuates the moment,
-      // and a PERFECT! callout on the closest ones.
+      // A shave is punctuated by the LENS, not a freeze: the FOV blows open, the
+      // streaks flood, and on a tight one time dips for a breath. It used to be
+      // a 50ms hitstop plus shake — on the most frequent good moment in the game
+      // (5-8 a minute for a good driver) that read as the frame rate hitching
+      // mid-pass, and shake says CONTACT, which a shave is the opposite of.
+      // The dip costs the same sim time as the freeze did (~0.05s).
       const perfect = tightness >= 0.7;
-      if (tightness >= 0.55) { juice.hitStop(0.05); juice.addShake(0.14); }
+      effects.punchLens(1.5 + 3 * tightness);
+      if (tightness >= 0.55) juice.slowMo(0.18, 0.55);
       if (perfect || headOn || slung) juice.rumble(perfect ? 24 : 16);
       const gain = Math.round(SCORE.nearMissBonus * Math.max(1, chain) * precision);
       score.score += gain;
@@ -783,6 +790,7 @@ function stepRace(dt) {
     rampageMsg = "OVERDRIVE!"; rampageMsgTimer = 1.6;
     sfxRampage(); setEngineRampage(true);
     juice.slowMo(0.3, 0.45); juice.addShake(0.5); juice.rumble([60, 50, 60, 50, 120]);
+    effects.punchLens(9);                          // ...and blows wide open going in
     hud.popup("OVERDRIVE!", "milestone", true);
     if (tipOnce("overdrive")) hud.tip(TIPS.overdrive);
   }
@@ -928,8 +936,17 @@ function frame(now) {
   if (dt > 0.25) dt = 0.25;
   lastT = now;
   const tScale = juice.update(dt);   // 0 during hitstop, <1 during slow-mo, else 1
-  acc += dt * tScale;
-  while (acc >= FIXED_DT) { step(FIXED_DT); acc -= FIXED_DT; }
+  if (tScale > 0 && tScale < 1) {
+    // SLOW-MO IS SMOOTH. Through the fixed-step accumulator a 0.45 time scale
+    // moved the world on alternate frames and showed the same picture on the
+    // rest, so OVERDRIVE — the best moment in the game — juddered at ~27 fps.
+    // While time is scaled the sim takes fractional steps on EVERY frame.
+    const simDt = dt * tScale, n = Math.ceil(simDt / FIXED_DT);
+    for (let i = 0; i < n; i++) step(simDt / n);
+  } else {
+    acc += dt * tScale;
+    while (acc >= FIXED_DT) { step(FIXED_DT); acc -= FIXED_DT; }
+  }
   render();
   requestAnimationFrame(frame);
 }

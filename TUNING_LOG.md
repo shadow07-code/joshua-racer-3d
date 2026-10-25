@@ -8,10 +8,14 @@ here can be reverted on its own — each entry is one commit.
 
 - Crash / barrier / landing: does the camera sell the hit (punch, not just shake)?
 - The chase camera follows by lerping world position, so it lags ~speed/posDampK behind and cuts corners on curves; a road-space follow would make the distance deliberate.
-- The test pane is often hidden (stale screenshots): the scratchpad shot server (port 8098) + `__shot()` saves frames to disk instead.
-- Near-miss moment: a brief lens response (FOV tick / streak burst) on a PERFECT.
 - HUD: is the speed readout + heat bar legible at a glance on a 375-wide phone?
 - Phone performance: pixel-ratio cap, shadow map size, particle counts.
+
+## 2026-10-25 — RACING pass 1: slow-mo is smooth, a shave hits the lens not the clock (jr3d-v34)
+
+- **What:** slow-mo now takes fractional sim steps every frame instead of whole steps through the fixed-step accumulator, and eases in/out; the 50 ms near-miss freeze + shake became an eased time dip (shaves ≥ 0.55) plus a LENS PUNCH (FOV opens 1.5–4.5° and the streaks flood); crash/smash punch the lens IN, OVERDRIVE blows it open.
+- **Why:** measured frame by frame, OVERDRIVE's slow-mo moved the world on alternating frames — 10 frozen frames in its first half-second, a ~27 fps judder on the best moment in the game (CLUTCH too); and a perfect shave froze the world 4 frames mid-pass, 5–8 times a minute for a good driver, which reads as the frame rate hitching.
+- **Evidence:** frozen frames (world didn't move) — perfect shave 4 → 0, OVERDRIVE entry 10 → 0; world speed now eases 1.49 → 0.82 → 1.49 u/frame through a shave and 1.56 → 0.71 → 1.6 into OVERDRIVE. Shave/crash filmstrips in `tools/debug/shots/`. Harnesses unchanged, density worst 2.79.
 
 ## 2026-09-29 — the camera frames a car, not a road (jr3d-v33)
 

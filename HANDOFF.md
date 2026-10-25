@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v33` — **bump on every code change** |
+| **Service worker** | `jr3d-v34` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -539,6 +539,8 @@ Everything numeric lives in **`src/config.js`**.
 | How long after leaving a tow a shave still counts | `SLINGSHOT.window` | 1.6s — generous, because it only ever pays on the SAME car |
 | Hill size | `CURVE.elevAmp1/2` | 9 / 6 → road spans y 0–30 |
 | Hill length | `CURVE.elevFreq1/2` | ~1100 / ~2600-unit wavelengths |
+| Lens punch | `effects.punchLens(deg)` calls in `main.js` | shave +1.5…+4.5 (by tightness), OVERDRIVE +9, smash −1.5, crash −5; decays at 6/s, attacks in ~2 frames; Comfort Mode ignores it |
+| Near-miss time dip | `juice.slowMo(0.18, 0.55)` on shaves ≥ 0.55 tight | eased; costs the same sim time as the old 50 ms freeze |
 | Camera roll | `CAMERA.roll` | 0.055 rad (~3°); Comfort Mode sets 0 |
 | Warm-up | `floor` on COAST RUN in `stages.js` | 0.22 — heat cannot drain below it in sector 1 |
 | Overdrive trigger / length | `HEAT.overdriveAt` / `overdriveDrain` / `smash` | 0.95 / 0.16/s / +0.05 per car — **only smashes feed it** |
@@ -678,10 +680,17 @@ that a ramp triggers exactly once and only in its own lane.
   plus `clearTraffic()` / `setHeat()`. With that you can empty the road, pin
   the heat, steer with synthetic key events, and FILM a manoeuvre: draw the
   WebGL canvas into a 2D canvas right after each stepped frame (same task, so
-  the drawing buffer is still valid), tile 4 frames with state labels, show the
-  sheet in an `<img>` overlay and screenshot it. The pane's zoom action does not
-  work — tile at 450×210 so the screenshot is 1:1. Generator scripts live in the
-  session scratchpad; the pattern is in the 2026-09-28 transcript.
+  the drawing buffer is still valid) and tile the frames with state labels.
+  **The tooling lives in `tools/debug/`** (it used to live in a session
+  scratchpad and was wiped): `python tools/debug/mkdebug.py` writes the build
+  (`--clean` removes it — do that before every deploy); `hook.js` is what it
+  injects (`__boot(heat)`, `__step(n)`, `__steer(-1|0|1)`, `__film(...)`,
+  `__shot(name)`, `__frame()` camera framing stats); `shotserver.py` (port
+  8098, run it in the background) receives frames the page POSTs and writes
+  them to `tools/debug/shots/` (git-ignored), where you can open them as
+  images — **the browser pane is often hidden, and then screenshots are stale,
+  so save frames to disk instead of screenshotting**; `sheet.py` tiles saved
+  frames into a before/after contact sheet.
   **If the pane is hidden the stub is too late** — the pending frame was queued
   with the REAL rAF and never fires, so the stub never captures anything. Copy
   `index.html` to an untracked `_debug.html` with the stub (plus capture-phase
@@ -693,6 +702,13 @@ that a ramp triggers exactly once and only in its own lane.
   only runs on the first tap. So `audio.js` reads the saved `jr3d.sfx` at module
   load; when it only read it inside `initAudio()`, the button said ON to a player
   who had switched sound off, right up until they touched the screen.
+
+- **Never slow time through the fixed-step accumulator.** `frame()` steps the
+  sim in whole `FIXED_DT` steps, so a 0.45 time scale moved the world on two
+  frames in five and showed the same picture on the rest: OVERDRIVE, CLUTCH and
+  every slow-mo juddered at ~27 fps. While `juice.update()` returns 0 < scale < 1
+  the sim now takes fractional steps every frame. Hitstop (scale 0) is a true
+  freeze and belongs only to IMPACTS — on a near miss it read as a frame hitch.
 
 - **Never let slip drive the nose on a release.** Slip is (target lateral
   speed − actual) and flips sign the moment you let go, so a nose driven by it
