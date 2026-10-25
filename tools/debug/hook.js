@@ -73,3 +73,18 @@ window.__frame = function () {
   var row = function (d) { J.road.worldPos(p.z + d, 22.4, w); w.project(cam); var y0 = (1 - w.y) / 2; J.road.worldPos(p.z + d, 22.4, w); w.y += 5; w.project(cam); return [+(y0 * 100).toFixed(1), Math.round((y0 - (1 - w.y) / 2) * H)]; };
   return { fov: +cam.fov.toFixed(1), carW: +((rr[0] - rl[0]) * 100).toFixed(1), carX: +(mid[0] * 100).toFixed(1), carBot: +(rl[1] * 100).toFixed(1), carRoof: +(roof[1] * 100).toFixed(1), r60: row(60), r125: row(125), r250: row(250) };
 };
+// Veil: % of the band between 30% and 75% of screen height that is washed near-white
+// (min channel >= 215) — bloom haze over the road and horizon.
+window.__veil = function () {
+  var gl = document.getElementById("game3d"), c = window.__veilC || (window.__veilC = document.createElement("canvas"));
+  c.width = gl.width; c.height = gl.height; var g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(gl, 0, 0);
+  var d = g.getImageData(0, 0, c.width, c.height).data, n = 0, tot = 0, y0 = Math.floor(c.height * 0.30), y1 = Math.floor(c.height * 0.75);
+  for (var y = y0; y < y1; y++) for (var x = 0; x < c.width; x += 2) { var i = (y * c.width + x) * 4; tot++; if (Math.min(d[i], d[i + 1], d[i + 2]) >= 215) n++; }
+  return n / tot * 100;
+};
+// Drive centred on an empty road at `heat`, sampling the veil every `every` frames.
+window.__veilDrive = function (heat, n, every) {
+  var J = window.__jr3d, v = [];
+  for (var s = 0; s < n; s++) { for (var i = 0; i < every; i++) { J.setHeat(heat); J.clearTraffic(); J.player.x = 0; J.player.vx = 0; __step(1); } v.push(+window.__veil().toFixed(1)); }
+  return v;
+};

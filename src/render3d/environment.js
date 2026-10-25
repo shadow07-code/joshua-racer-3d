@@ -65,9 +65,11 @@ export function makeEnvironment(scene, road) {
   // ── Sea ──
   // Roughness sets the size of the low sun's glint on the water. At 0.3 it was a
   // round, blown-out white blob sitting at road height beside the car — it read
-  // as a smudge on the lens, not as sunlight on water. 0.45 draws it as a thin
-  // line of light on the horizon, which is what low sun on a sea looks like.
-  const seaMat = new THREE.MeshStandardMaterial({ color: 0x35637c, metalness: 0.2, roughness: 0.45 });
+  // as a smudge on the lens, not as sunlight on water. 0.45 looked right at a
+  // calm heat, but bloom RIDES the heat (main.js), and at full heat or in
+  // OVERDRIVE the glint bloomed back into a white haze over the horizon beside
+  // the road — exactly when the player is driving best. 0.6 keeps a small glint.
+  const seaMat = new THREE.MeshStandardMaterial({ color: 0x35637c, metalness: 0.2, roughness: 0.6 });
   seaMat.envMapIntensity = 0.8;
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), seaMat);
   sea.rotation.x = -Math.PI / 2;

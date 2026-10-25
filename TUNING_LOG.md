@@ -11,6 +11,12 @@ here can be reverted on its own — each entry is one commit.
 - HUD: is the speed readout + heat bar legible at a glance on a 375-wide phone?
 - Phone performance: pixel-ratio cap, shadow map size, particle counts.
 
+## 2026-10-25 — RACING pass 2: no white haze when you're driving hot (jr3d-v35)
+
+- **What:** sea `roughness` 0.45 → 0.6 (`render3d/environment.js`) — revises the 2026-09-29 entry below.
+- **Why:** bloom rides the heat (0.46 cold → 0.79 at 90% → 1.19 in OVERDRIVE), and at high heat the sun's glint on the sea bloomed back into a white haze over the horizon beside the road — the screen washed out exactly when the player is driving best. 0.45 had been judged at one calm frame.
+- **Evidence:** % of the horizon band (30–75% of screen height) washed near-white, peak over the same 10-sample drive: OVERDRIVE bloom 10.2% → 2.3%, 90% heat 5.0% → 1.4%. Side-by-side frames at the peak keep a small glint on the water. Harnesses unchanged.
+
 ## 2026-10-25 — RACING pass 1: slow-mo is smooth, a shave hits the lens not the clock (jr3d-v34)
 
 - **What:** slow-mo now takes fractional sim steps every frame instead of whole steps through the fixed-step accumulator, and eases in/out; the 50 ms near-miss freeze + shake became an eased time dip (shaves ≥ 0.55) plus a LENS PUNCH (FOV opens 1.5–4.5° and the streaks flood); crash/smash punch the lens IN, OVERDRIVE blows it open.
