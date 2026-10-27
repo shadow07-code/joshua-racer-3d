@@ -63,6 +63,12 @@ export function makeEffects() {
   // Positive = the lens is blown open (a shave, OVERDRIVE); negative = it
   // flinches in (an impact). Spectacle only: Comfort Mode ignores it.
   let punch = 0, punchNow = 0;     // target (decays) and what the lens shows (attacks in ~2 frames)
+  // THE TOW. Sitting in a slipstream used to change nothing on screen — the
+  // only sign was a popup AFTER you pulled out, so half of the game's core move
+  // ("tailgate, shave and slide") was invisible while you were doing it. Now
+  // the air visibly rushes: the streaks speed up and thicken and the edges
+  // close in, scaled by how close to the bumper you are.
+  let tow = 0;                     // smoothed slipstream closeness, 0..1
 
   function band(t, a, b) {
     const x = Math.max(0, Math.min(1, (t - a) / (b - a)));
@@ -100,10 +106,12 @@ export function makeEffects() {
     }
   }
 
-  // Returns the FOV to apply this frame.
-  function update(dt, speed01) {
+  // Returns the FOV to apply this frame. `draft` is the slipstream's closeness
+  // (0 = not in a tow, 1 = on the bumper).
+  function update(dt, speed01, draft = 0) {
     const cp = comfortParams();
-    const targetVig = cp.vignetteMax * band(speed01, 0.25, 1.0);
+    tow += (draft - tow) * (1 - Math.exp(-dt * (draft > tow ? 10 : 5)));
+    const targetVig = cp.vignetteMax * band(speed01, 0.25, 1.0) + 0.32 * tow;
     const kick = cp.fovKickEnabled ? cp.fovKick * band(speed01, 0.3, 1.05) : 0;
     const targetFov = cp.fovBase + kick;
 
@@ -116,8 +124,8 @@ export function makeEffects() {
     punchNow += (punch - punchNow) * (1 - Math.exp(-dt * 30));
     const open = cp.fovKickEnabled ? Math.max(0, punchNow) : 0;
     // A blown-open lens also floods the streaks for a moment — the air rushing in.
-    stepStreaks(streaks, dt, speed01 + open * 0.06);
-    drawStreaks(cp.speedLines ? Math.min(1.4, band(speed01, STREAK.band[0], STREAK.band[1]) + open * 0.12) : 0);
+    stepStreaks(streaks, dt, speed01 + open * 0.06 + 0.5 * tow);
+    drawStreaks(cp.speedLines ? Math.min(1.4, band(speed01, STREAK.band[0], STREAK.band[1]) + open * 0.12 + 1.0 * tow) : 0);
     return fov + (cp.fovKickEnabled ? punchNow : 0);
   }
 

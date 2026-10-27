@@ -87,7 +87,7 @@ let sectorIdx = 1, sector = sectorAt(1), sectorBest = 1;
 
 // HEAT — the one resource the game runs on. See src/heat.js for why.
 const heat = makeHeat();
-let draftT = 0, draftStreak = 0;
+let draftT = 0, draftStreak = 0, draftClose = 0;   // draftClose: this frame's tow, 0..1 (drives the lens)
 let driftTime = 0, bestDrift = 0, skidOn = false, windOn = false;
 // SLINGSHOT bookkeeping — which car you were towing off, how long you held it,
 // and how long ago you broke out. A shave on THAT car inside the window is the
@@ -172,7 +172,7 @@ function resetWorld() {
   player.rampage = 0; player.throttle01 = HEAT.speedFloor;
   resetPose(pose);
   Object.assign(heat, makeHeat());
-  draftT = 0; draftStreak = 0;
+  draftT = 0; draftStreak = 0; draftClose = 0;
   cancelDrift(player);
   driftTime = 0; bestDrift = 0;
   draftCar = null; draftHeldFor = 0; draftSince = 1e9;
@@ -734,6 +734,7 @@ function stepRace(dt) {
   // collect the near-miss on the way past. Two mechanics, one fluid line.
   draftSince += dt;
   const draft = draftTarget(traffic, player.x, player.z, player.y);
+  draftClose = draft ? draft.closeness : 0;
   if (draft) {
     draftT += dt;
     draftStreak += dt;
@@ -840,7 +841,7 @@ function stepRace(dt) {
   lastGear = gearNow;
   setWind(speed01);
   particles.update(dt);
-  const fov = effects.update(dt, speed01);
+  const fov = effects.update(dt, speed01, draftClose);
   chase.update(dt, player, fov);
 }
 

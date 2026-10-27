@@ -11,6 +11,12 @@ here can be reverted on its own — each entry is one commit.
 - HUD: is the speed readout + heat bar legible at a glance on a 375-wide phone?
 - Phone performance: pixel-ratio cap, shadow map size, particle counts.
 
+## 2026-10-27 — RACING pass 3: you can SEE the slipstream (jr3d-v36)
+
+- **What:** while you sit in a tow the screen responds, scaled by how close to the bumper you are: the edges close in (vignette +0.32), the streaks thicken (+1.0 intensity) and rush (+0.5 speed). Visual only — the tow's heat and chain are untouched.
+- **Why:** tailgating is half of the core loop ("tailgate, shave and slide for HEAT") and nothing on screen changed while you did it — `drafting` was passed to the HUD and never read; the only sign was a SLIPSTREAM popup after you pulled out, and only for tows over 1 s.
+- **Evidence:** same scripted tow (one car dead ahead, pull out at dz 24): vignette at dz 10–14 0.26 → 0.42, lit streak pixels 337 → 812; before, both were flat through the whole tow. Harnesses unchanged, density worst 2.79.
+
 ## 2026-10-25 — RACING pass 2: no white haze when you're driving hot (jr3d-v35)
 
 - **What:** sea `roughness` 0.45 → 0.6 (`render3d/environment.js`) — revises the 2026-09-29 entry below.

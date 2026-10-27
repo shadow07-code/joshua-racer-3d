@@ -9,7 +9,7 @@ This doc is the single source of truth for picking the project back up.
 | **Live game** | https://joshua-racer-3d.vercel.app |
 | **Repo** | https://github.com/shadow07-code/joshua-racer-3d (public) |
 | **Vercel** | project `joshua-racer-3d`, scope `antonysajan-9019` |
-| **Service worker** | `jr3d-v35` — **bump on every code change** |
+| **Service worker** | `jr3d-v36` — **bump on every code change** |
 | **2D reference to port from** | `D:\Claude Code\Joshua racer 1\src\` |
 | **Original brief** | `JOSHUA_RACER_3D_BRIEF.md` (several defaults **overridden** — see §2) |
 
@@ -540,6 +540,7 @@ Everything numeric lives in **`src/config.js`**.
 | Hill size | `CURVE.elevAmp1/2` | 9 / 6 → road spans y 0–30 |
 | Hill length | `CURVE.elevFreq1/2` | ~1100 / ~2600-unit wavelengths |
 | Lens punch | `effects.punchLens(deg)` calls in `main.js` | shave +1.5…+4.5 (by tightness), OVERDRIVE +9, smash −1.5, crash −5; decays at 6/s, attacks in ~2 frames; Comfort Mode ignores it |
+| Slipstream on screen | `effects.update(dt, speed01, draftClose)` | tow closeness adds +0.32 vignette, +1.0 streak intensity, +0.5 streak speed; attack 10/s, release 5/s |
 | Near-miss time dip | `juice.slowMo(0.18, 0.55)` on shaves ≥ 0.55 tight | eased; costs the same sim time as the old 50 ms freeze |
 | Camera roll | `CAMERA.roll` | 0.055 rad (~3°); Comfort Mode sets 0 |
 | Warm-up | `floor` on COAST RUN in `stages.js` | 0.22 — heat cannot drain below it in sector 1 |

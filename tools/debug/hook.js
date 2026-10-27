@@ -88,3 +88,24 @@ window.__veilDrive = function (heat, n, every) {
   for (var s = 0; s < n; s++) { for (var i = 0; i < every; i++) { J.setHeat(heat); J.clearTraffic(); J.player.x = 0; J.player.vx = 0; __step(1); } v.push(+window.__veil().toFixed(1)); }
   return v;
 };
+// A tow: one civilian car dead ahead in our lane; sit in its slipstream, pull out at
+// dz < 14. Films 6 frames to shots/<name>.jpg; returns per-frame [dz, vignette, streak px].
+window.__towFilm = async function (name, heat) {
+  var J = window.__jr3d;
+  J.traffic.nextRowZ = J.player.z + 60;
+  for (var i = 0; i < 400 && !J.traffic.list.some(function (c) { return !c.oncoming; }); i++) { J.setHeat(heat); __step(1); }
+  var c = J.traffic.list.find(function (c) { return !c.oncoming; });
+  window.__settle(heat, 120);
+  J.clearTraffic();
+  Object.assign(c, { z: J.player.z + 80, x: J.player.x, passed: false, nearMissed: false, smashed: false, flinchT: 0, evadeTo: null, driftVx: 0 });
+  J.traffic.list.push(c);
+  var out = [], ln = document.getElementById("speed-lines"), vig = document.getElementById("speed-vignette");
+  var lit = function () { var g = ln.getContext("2d"), d = g.getImageData(0, 0, ln.width, ln.height).data, n = 0; for (var k = 3; k < d.length; k += 16) if (d[k] > 20) n++; return n; };
+  var pulled = false;
+  await window.__film([0, 50, 62, 70, 75, 95], 95, name, { heat: heat, clear: false,
+    pre: function (i) { J.traffic.nextRowZ = J.player.z + 1e6; if (c.z - J.player.z < 24) pulled = true; },
+    steer: function () { return pulled && Math.abs(J.player.x - c.x) < 16 ? 1 : 0; },
+    label: function (i) { var dz = c.z - J.player.z; var r = [Math.round(dz), +(+vig.style.opacity).toFixed(2), lit()]; out.push(r); return "dz" + r[0] + " vig" + r[1] + " streakpx" + r[2]; },
+    save: name });
+  return out;
+};
